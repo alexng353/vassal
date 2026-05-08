@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
+import { readVassalConfig } from "./config.ts";
 
 export type WorktreeHandle = {
   path: string;
@@ -56,4 +57,37 @@ export async function removeWorktree(
 export async function diffWorktree(handle: WorktreeHandle): Promise<string> {
   const r = await $`git -C ${handle.path} diff ${handle.baseRef}`.quiet();
   return r.text();
+}
+
+export async function useExternalWorktree(
+  baseCwd: string,
+  requestedPath: string,
+): Promise<string> {
+  if (existsSync(requestedPath)) return requestedPath;
+
+  const config = await readVassalConfig(baseCwd);
+  if (!config.worktreeSetup) {
+    throw new Error(
+      `worktree path does not exist: ${requestedPath}\n` +
+        `configure [vassal] worktree_setup in .alex.toml to auto-create it.`,
+    );
+  }
+
+  const command = config.worktreeSetup.replaceAll("{path}", requestedPath);
+  const result = await $`bash -c ${command}`.cwd(baseCwd).nothrow();
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `worktree_setup command failed (exit ${result.exitCode}): ${command}\n` +
+        `stderr: ${result.stderr.toString()}`,
+    );
+  }
+
+  if (!existsSync(requestedPath)) {
+    throw new Error(
+      `worktree_setup ran but path still does not exist: ${requestedPath}\n` +
+        `command: ${command}`,
+    );
+  }
+
+  return requestedPath;
 }

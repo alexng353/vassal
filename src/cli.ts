@@ -24,8 +24,13 @@ const HELP = dedent`
   FLAGS
     --session <id>     resume a session by id
     --model <p/m>      provider/model (default: openai/gpt-5.5)
+    --worktree <path>  use this path; runs [vassal] worktree_setup if missing
     --no-worktree      run in current cwd instead of a fresh worktree
     --cwd <path>       override base cwd (defaults to current directory)
+
+  CONFIG (.alex.toml at repo root)
+    [vassal]
+    worktree_setup = "work init {path}"   # {path} is substituted
 
   OUTPUT (dispatch)
     SESSION <id>
@@ -124,6 +129,8 @@ async function main(): Promise<number> {
         model: typeof flags.model === "string" ? flags.model : undefined,
         cwd: typeof flags.cwd === "string" ? flags.cwd : undefined,
         worktree: flags["no-worktree"] !== true,
+        worktreePath:
+          typeof flags.worktree === "string" ? flags.worktree : undefined,
       });
     }
   }

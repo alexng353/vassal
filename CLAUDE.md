@@ -77,6 +77,10 @@ A new dispatch (no `--session`) creates a worktree at `$TMPDIR/vassal-wt-<short-
 
 `--no-worktree` runs in the parent's cwd; only use when the parent explicitly wants in-place edits.
 
+`--worktree <path>` lets the caller pin the dispatch to a specific path (e.g. an existing worktree, or one your own tooling will create). If the path doesn't exist, vassal looks for a `[vassal] worktree_setup` command in `.alex.toml` at the repo root, substitutes `{path}`, and runs it via `bash -c`. If setup is configured but the path still doesn't exist after the command, vassal errors. Mutually exclusive with `--no-worktree`.
+
+The `.alex.toml` is shared with other personal tooling (e.g. the `rebase-merge` skill reads a top-level `post-merge` key). Sectioned keys like `[vassal] worktree_setup` are namespaced and won't collide with flat top-level keys read by other tools.
+
 ## Daemon lifecycle
 
 `opencode serve` is auto-started lazily on first dispatch and persists across calls. Picks port 4096 by default, scans up to 4145 if taken. PID + URL written to `$XDG_STATE_HOME/vassal/daemon.json`. The daemon is detached and survives the CLI process exit.

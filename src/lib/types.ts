@@ -4,6 +4,7 @@ export type DispatchOptions = {
   model?: string;
   cwd?: string;
   worktree?: boolean;
+  worktreePath?: string;
   maxTurns?: number;
 };
 

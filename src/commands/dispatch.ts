@@ -6,6 +6,7 @@ import type { DispatchOptions, DispatchResult } from "../lib/types.ts";
 import {
   createWorktree,
   isInsideGitRepo,
+  useExternalWorktree,
   type WorktreeHandle,
 } from "../lib/worktree.ts";
 
@@ -13,7 +14,12 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
   const baseCwd = opts.cwd ?? process.cwd();
   const useWorktree = opts.worktree ?? true;
 
+  if (opts.worktreePath && opts.worktree === false) {
+    throw new Error("--worktree <path> conflicts with --no-worktree");
+  }
+
   let workCwd = baseCwd;
+  let externalWorktreePath: string | null = null;
   let worktreeHandle: WorktreeHandle | null = null;
   let sessionId = opts.sessionId ?? null;
 
@@ -28,7 +34,13 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
   const client = makeClient(daemon);
 
   if (!sessionId) {
-    if (useWorktree) {
+    if (opts.worktreePath) {
+      externalWorktreePath = await useExternalWorktree(
+        baseCwd,
+        opts.worktreePath,
+      );
+      workCwd = externalWorktreePath;
+    } else if (useWorktree) {
       if (!(await isInsideGitRepo(baseCwd))) {
         throw new Error(
           `not inside a git repo: ${baseCwd}. pass --no-worktree or run from a repo.`,
@@ -46,7 +58,7 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
       id: sessionId,
       title,
       cwd: baseCwd,
-      worktree: worktreeHandle?.path ?? null,
+      worktree: worktreeHandle?.path ?? externalWorktreePath ?? null,
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
       cost: 0,
@@ -71,7 +83,8 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
 
   return {
     sessionId,
-    worktree: worktreeHandle?.path ?? meta?.worktree ?? null,
+    worktree:
+      worktreeHandle?.path ?? externalWorktreePath ?? meta?.worktree ?? null,
     finalText: outcome.finalText,
     cost: outcome.cost,
     exitCode: 0,
