@@ -13,11 +13,18 @@ const DEFAULT_PORT = 4096;
 const HEALTHCHECK_TIMEOUT_MS = 10_000;
 const HEALTHCHECK_INTERVAL_MS = 200;
 
-export async function ensureDaemon(): Promise<DaemonState> {
+export type EnsureDaemonResult = {
+  state: DaemonState;
+  reused: boolean;
+};
+
+export async function ensureDaemon(): Promise<EnsureDaemonResult> {
   const existing = await readDaemonState();
-  if (existing && (await isAlive(existing))) return existing;
+  if (existing && (await isAlive(existing))) {
+    return { state: existing, reused: true };
+  }
   if (existing) await clearDaemonState();
-  return await startDaemon();
+  return { state: await startDaemon(), reused: false };
 }
 
 async function isAlive(state: DaemonState): Promise<boolean> {

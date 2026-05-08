@@ -2,8 +2,9 @@ import { ensureDaemon, stopDaemon } from "../lib/daemon.ts";
 import { readDaemonState } from "../lib/state.ts";
 
 export async function runServerStart(): Promise<number> {
-  const state = await ensureDaemon();
-  console.log(`daemon up at ${state.url} (pid ${state.pid})`);
+  const { state, reused } = await ensureDaemon();
+  const verb = reused ? "already up" : "started";
+  console.log(`daemon ${verb} at ${state.url} (pid ${state.pid})`);
   return 0;
 }
 

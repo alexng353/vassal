@@ -24,7 +24,7 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
     }
   }
 
-  const daemon = await ensureDaemon();
+  const { state: daemon } = await ensureDaemon();
   const client = makeClient(daemon);
 
   if (!sessionId) {
