@@ -1,0 +1,30 @@
+{
+  "name": "vassal",
+  "version": "0.1.0",
+  "description": "Dispatch coding tasks to GPT-5.5 (via opencode) from your Claude Code orchestrator. Worktree-isolated, session-resumable.",
+  "type": "module",
+  "private": true,
+  "packageManager": "bun@1.3.5",
+  "bin": {
+    "vassal": "./src/cli.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/cli.ts --target=bun --outfile=./dist/vassal.js",
+    "check": "tsgo --noEmit",
+    "lint": "biome check --fix --unsafe",
+    "lint:nofix": "biome check",
+    "fmt": "biome format --write ."
+  },
+  "dependencies": {
+    "@opencode-ai/sdk": "latest",
+    "dedent": "^1.7.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
+    "@types/bun": "^1.3.11",
+    "@typescript/native-preview": "^7.0.0-dev.20260406.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

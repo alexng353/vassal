@@ -1,0 +1,97 @@
+import type { Part } from "@opencode-ai/sdk";
+import { createOpencodeClient } from "@opencode-ai/sdk";
+import type { DaemonState } from "./types.ts";
+
+export type OpencodeClient = ReturnType<typeof createOpencodeClient>;
+
+export function makeClient(daemon: DaemonState): OpencodeClient {
+  return createOpencodeClient({ baseUrl: daemon.url });
+}
+
+export async function createSession(
+  client: OpencodeClient,
+  title: string,
+  cwd: string,
+): Promise<string> {
+  const res = await client.session.create({
+    body: { title },
+    query: { directory: cwd },
+  });
+  if (!res.data) {
+    throw new Error(
+      `opencode session.create failed: ${describeError(res.error)}`,
+    );
+  }
+  return res.data.id;
+}
+
+export type PromptOptions = {
+  sessionId: string;
+  prompt: string;
+  cwd: string;
+  model?: string;
+};
+
+export type PromptOutcome = {
+  finalText: string;
+  cost: number | null;
+};
+
+export async function sendPrompt(
+  client: OpencodeClient,
+  opts: PromptOptions,
+): Promise<PromptOutcome> {
+  const [providerID, modelID] = (opts.model ?? "openai/gpt-5.5").split("/");
+  if (!providerID || !modelID) {
+    throw new Error(
+      `invalid model "${opts.model}" — expected "<provider>/<model>"`,
+    );
+  }
+
+  const res = await client.session.prompt({
+    path: { id: opts.sessionId },
+    query: { directory: opts.cwd },
+    body: {
+      model: { providerID, modelID },
+      parts: [{ type: "text", text: opts.prompt }],
+    },
+  });
+
+  if (!res.data) {
+    throw new Error(
+      `opencode session.prompt failed: ${describeError(res.error)}`,
+    );
+  }
+
+  return {
+    finalText: extractFinalText(res.data.parts),
+    cost: res.data.info.cost ?? null,
+  };
+}
+
+function extractFinalText(parts: Array<Part>): string {
+  return parts
+    .filter((p): p is Extract<Part, { type: "text" }> => p.type === "text")
+    .map((p) => p.text)
+    .join("\n")
+    .trim();
+}
+
+export async function listOpencodeSessions(
+  client: OpencodeClient,
+): Promise<Array<{ id: string; title: string }>> {
+  const res = await client.session.list();
+  if (!res.data) return [];
+  return res.data.map((s) => ({ id: s.id, title: s.title }));
+}
+
+function describeError(err: unknown): string {
+  if (err === undefined) return "unknown error";
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
