@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 import {
   clearDaemonState,
+  ensureStateDir,
   readDaemonState,
   VASSAL_STATE_DIR,
   writeDaemonState,
@@ -36,10 +37,11 @@ async function isAlive(state: DaemonState): Promise<boolean> {
 }
 
 async function startDaemon(): Promise<DaemonState> {
+  ensureStateDir();
   const port = await pickPort();
   const url = `http://127.0.0.1:${port}`;
   const logPath = join(VASSAL_STATE_DIR, "daemon.log");
-  const logFd = await Bun.file(logPath).writer();
+  const logFd = Bun.file(logPath).writer();
 
   const child = spawn(
     "opencode",

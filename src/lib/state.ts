@@ -9,7 +9,7 @@ export const VASSAL_STATE_DIR = join(STATE_HOME, "vassal");
 const DAEMON_FILE = join(VASSAL_STATE_DIR, "daemon.json");
 const SESSIONS_FILE = join(VASSAL_STATE_DIR, "sessions.json");
 
-function ensureStateDir(): void {
+export function ensureStateDir(): void {
   if (!existsSync(VASSAL_STATE_DIR)) {
     mkdirSync(VASSAL_STATE_DIR, { recursive: true });
   }
