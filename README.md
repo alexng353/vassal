@@ -64,6 +64,22 @@ vassal "<prompt>"
 // Claude is notified when the process exits; reads stdout via BashOutput.
 ```
 
+## Claude Code skill
+
+A ready-to-install skill lives at [`skills/vassal/SKILL.md`](skills/vassal/SKILL.md). It teaches Claude when to dispatch to vassal, the output contract, and the calling patterns (foreground, background, resume, fan-out).
+
+Install it into your Claude Code skills directory:
+
+```bash
+# symlink (recommended — pulls updates with `git pull`)
+ln -s "$(pwd)/skills/vassal" ~/.claude/skills/vassal
+
+# or copy
+cp -r skills/vassal ~/.claude/skills/vassal
+```
+
+Then in any Claude Code session, ask Claude to "vassal it" / "delegate this to gpt-5.5" / etc. and the skill activates.
+
 ## Why not just use opencode directly?
 
 `opencode run` is great but:
