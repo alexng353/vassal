@@ -54,6 +54,8 @@ type ParsedArgs = {
   flags: Record<string, string | true>;
 };
 
+const BOOLEAN_FLAGS = new Set(["no-worktree", "all", "force", "help"]);
+
 function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
   const flags: Record<string, string | true> = {};
@@ -63,6 +65,11 @@ function parseArgs(argv: string[]): ParsedArgs {
     if (arg === undefined) break;
     if (arg.startsWith("--")) {
       const name = arg.slice(2);
+      if (BOOLEAN_FLAGS.has(name)) {
+        flags[name] = true;
+        i += 1;
+        continue;
+      }
       const next = argv[i + 1];
       if (next !== undefined && !next.startsWith("--")) {
         flags[name] = next;
