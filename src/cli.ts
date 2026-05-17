@@ -1,14 +1,17 @@
 #!/usr/bin/env bun
 import dedent from "dedent";
+import { runAbort } from "./commands/abort.ts";
 import { runCleanup } from "./commands/cleanup.ts";
 import { runDispatch } from "./commands/dispatch.ts";
 import { runList } from "./commands/list.ts";
+import { runPeek } from "./commands/peek.ts";
 import {
   runServerStart,
   runServerStatus,
   runServerStop,
 } from "./commands/server.ts";
 import { runStatus } from "./commands/status.ts";
+import { parseDuration } from "./lib/duration.ts";
 
 const HELP = dedent`
   vassal — dispatch coding tasks to GPT-5.5 via opencode.
@@ -16,8 +19,10 @@ const HELP = dedent`
   USAGE
     vassal <prompt>                       dispatch a new task (worktree by default)
     vassal --session <id> <prompt>        resume an existing session
-    vassal list                           list known sessions
+    vassal list [--all] [--max-age <dur>] list known sessions (default: 24h)
     vassal status <session-id>            show metadata for a session
+    vassal peek <session-id>              snapshot of the latest turn
+    vassal abort <session-id>             interrupt an in-flight session
     vassal cleanup <session-id> [--force] remove worktree and forget session
     vassal server start|stop|status       manage the opencode daemon
 
@@ -27,6 +32,8 @@ const HELP = dedent`
     --worktree <path>  use this path; runs [vassal] worktree_setup if missing
     --no-worktree      run in current cwd instead of a fresh worktree
     --cwd <path>       override base cwd (defaults to current directory)
+    --all              show all sessions regardless of age (sugar for --max-age 0)
+    --max-age <dur>    hide sessions older than this (default: 24h; e.g. 7d, 30m)
 
   CONFIG (.alex.toml at repo root)
     [vassal]
@@ -69,7 +76,14 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     }
   }
-  const subcommands = new Set(["list", "status", "cleanup", "server"]);
+  const subcommands = new Set([
+    "list",
+    "status",
+    "peek",
+    "abort",
+    "cleanup",
+    "server",
+  ]);
   if (positional[0] && subcommands.has(positional[0])) {
     return {
       command: positional[0],
@@ -90,8 +104,22 @@ async function main(): Promise<number> {
   const { command, positional, flags } = parseArgs(argv);
 
   switch (command) {
-    case "list":
-      return runList();
+    case "list": {
+      const maxAgeStr =
+        typeof flags["max-age"] === "string"
+          ? flags["max-age"]
+          : flags.all === true
+            ? "0"
+            : "24h";
+      let maxAgeMs: number;
+      try {
+        maxAgeMs = parseDuration(maxAgeStr);
+      } catch (e) {
+        console.error(`bad --max-age: ${(e as Error).message}`);
+        return 2;
+      }
+      return runList({ maxAgeMs });
+    }
     case "status": {
       const id = positional[0];
       if (!id) {
@@ -99,6 +127,22 @@ async function main(): Promise<number> {
         return 2;
       }
       return runStatus(id);
+    }
+    case "peek": {
+      const id = positional[0];
+      if (!id) {
+        console.error("peek requires a session id");
+        return 2;
+      }
+      return runPeek(id);
+    }
+    case "abort": {
+      const id = positional[0];
+      if (!id) {
+        console.error("abort requires a session id");
+        return 2;
+      }
+      return runAbort(id);
     }
     case "cleanup": {
       const id = positional[0];

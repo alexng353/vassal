@@ -67,6 +67,8 @@ EXIT <code>
 
 This contract is what makes vassal usable from a parent agent. Do not change line prefixes, separator, or ordering without updating the skill at `~/.claude/skills/vassal/SKILL.md`.
 
+`peek` and `abort` (mid-flight commands) have their own free-form output and do **not** follow the dispatch contract. `peek` prints metadata + a snapshot of the latest assistant turn (text/reasoning/tool calls); `abort` prints a one-line acknowledgement. Both are documented in the skill.
+
 ## Worktree lifecycle
 
 A new dispatch (no `--session`) creates a worktree at `$TMPDIR/vassal-wt-<short-id>` on a branch `vassal/<short-id>` off the current HEAD. The dispatched agent edits there. The parent orchestrator is responsible for:

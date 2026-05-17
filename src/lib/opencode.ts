@@ -1,4 +1,4 @@
-import type { Part } from "@opencode-ai/sdk";
+import type { Message, Part } from "@opencode-ai/sdk";
 import { createOpencodeClient } from "@opencode-ai/sdk";
 import type { DaemonState } from "./types.ts";
 
@@ -75,6 +75,24 @@ function extractFinalText(parts: Array<Part>): string {
     .map((p) => p.text)
     .join("\n")
     .trim();
+}
+
+export type SessionMessage = {
+  info: Message;
+  parts: Array<Part>;
+};
+
+export async function listSessionMessages(
+  client: OpencodeClient,
+  sessionId: string,
+): Promise<Array<SessionMessage>> {
+  const res = await client.session.messages({ path: { id: sessionId } });
+  if (!res.data) {
+    throw new Error(
+      `opencode session.messages failed: ${describeError(res.error)}`,
+    );
+  }
+  return res.data;
 }
 
 export async function listOpencodeSessions(

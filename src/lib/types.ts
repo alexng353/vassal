@@ -31,4 +31,6 @@ export type SessionMeta = {
   createdAt: number;
   lastActivityAt: number;
   cost: number;
+  exitCode?: number;
+  abortedAt?: number;
 };

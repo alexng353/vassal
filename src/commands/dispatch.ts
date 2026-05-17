@@ -1,5 +1,10 @@
 import { ensureDaemon } from "../lib/daemon.ts";
-import { createSession, makeClient, sendPrompt } from "../lib/opencode.ts";
+import {
+  createSession,
+  makeClient,
+  type PromptOutcome,
+  sendPrompt,
+} from "../lib/opencode.ts";
 import { formatDispatchResult } from "../lib/output.ts";
 import { getSession, writeSession } from "../lib/state.ts";
 import type { DispatchOptions, DispatchResult } from "../lib/types.ts";
@@ -65,20 +70,31 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
     });
   }
 
-  const outcome = await sendPrompt(client, {
-    sessionId,
-    prompt: opts.prompt,
-    cwd: workCwd,
-    model: opts.model,
-  });
-
-  const meta = await getSession(sessionId);
-  if (meta) {
-    await writeSession({
-      ...meta,
-      lastActivityAt: Date.now(),
-      cost: meta.cost + (outcome.cost ?? 0),
+  let outcome: PromptOutcome | null = null;
+  let exitCode = 1;
+  let meta = await getSession(sessionId);
+  try {
+    outcome = await sendPrompt(client, {
+      sessionId,
+      prompt: opts.prompt,
+      cwd: workCwd,
+      model: opts.model,
     });
+    exitCode = 0;
+  } finally {
+    meta = await getSession(sessionId);
+    if (meta) {
+      await writeSession({
+        ...meta,
+        lastActivityAt: Date.now(),
+        cost: meta.cost + (outcome?.cost ?? 0),
+        exitCode,
+      });
+    }
+  }
+
+  if (!outcome) {
+    throw new Error("prompt failed without an error");
   }
 
   return {
