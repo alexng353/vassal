@@ -2,7 +2,7 @@ import type { DispatchResult } from "./types.ts";
 
 export function formatDispatchResult(r: DispatchResult): string {
   const lines = [
-    `SESSION ${r.sessionId}`,
+    `SESSION ${r.alias ?? r.sessionId}`,
     r.worktree ? `WORKTREE ${r.worktree}` : "WORKTREE -",
     r.cost !== null ? `COST $${r.cost.toFixed(4)}` : "COST -",
     `EXIT ${r.exitCode}`,

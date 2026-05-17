@@ -1,3 +1,4 @@
+import { generateAlias, resolveIdOrAlias } from "../lib/alias.ts";
 import { ensureDaemon } from "../lib/daemon.ts";
 import {
   createSession,
@@ -27,10 +28,13 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
   let externalWorktreePath: string | null = null;
   let worktreeHandle: WorktreeHandle | null = null;
   let sessionId = opts.sessionId ?? null;
+  let alias: string | null = null;
 
   if (sessionId) {
-    const existing = await getSession(sessionId);
+    const existing = await resolveIdOrAlias(sessionId);
     if (existing) {
+      sessionId = existing.id;
+      alias = existing.alias ?? null;
       workCwd = existing.worktree ?? existing.cwd;
     }
   }
@@ -58,6 +62,7 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
 
     const title = derivTitle(opts.prompt);
     sessionId = await createSession(client, title, workCwd);
+    alias = await generateAlias();
 
     await writeSession({
       id: sessionId,
@@ -67,6 +72,7 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
       cost: 0,
+      alias,
     });
   }
 
@@ -99,6 +105,7 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
 
   return {
     sessionId,
+    alias: alias ?? meta?.alias ?? null,
     worktree:
       worktreeHandle?.path ?? externalWorktreePath ?? meta?.worktree ?? null,
     finalText: outcome.finalText,

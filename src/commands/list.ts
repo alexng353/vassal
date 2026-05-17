@@ -1,3 +1,4 @@
+import { displayId } from "../lib/alias.ts";
 import { ensureDaemon } from "../lib/daemon.ts";
 import { makeClient, type OpencodeClient } from "../lib/opencode.ts";
 import { readSessions } from "../lib/state.ts";
@@ -32,13 +33,17 @@ export async function runList(options: { maxAgeMs: number }): Promise<number> {
   if (visible.length === 0) {
     console.log("(no sessions)");
   } else {
+    const sessionWidth = Math.max(
+      "SESSION".length,
+      ...visible.map(({ meta }) => displayId(meta).length),
+    );
     console.log(
-      `${"SESSION".padEnd(36)}  ${"AGE".padEnd(7)}  ${"COST".padEnd(7)} ${"STATUS".padEnd(8)}  TITLE`,
+      `${"SESSION".padEnd(sessionWidth)}  ${"AGE".padEnd(7)}  ${"COST".padEnd(7)} ${"STATUS".padEnd(8)}  TITLE`,
     );
     for (const { meta, status } of visible) {
       const age = humanAge(now - meta.lastActivityAt);
       const cost = `$${meta.cost.toFixed(2)}`;
-      console.log(formatRow(meta, age, cost, status));
+      console.log(formatRow(meta, age, cost, status, sessionWidth));
     }
   }
 
@@ -66,8 +71,9 @@ function formatRow(
   age: string,
   cost: string,
   status: Status,
+  sessionWidth: number,
 ): string {
-  return `${meta.id.padEnd(36)}  ${age.padEnd(7)}  ${cost.padEnd(7)} ${status.padEnd(8)}  ${meta.title}`;
+  return `${displayId(meta).padEnd(sessionWidth)}  ${age.padEnd(7)}  ${cost.padEnd(7)} ${status.padEnd(8)}  ${meta.title}`;
 }
 
 function humanAge(ms: number): string {

@@ -10,6 +10,7 @@ export type DispatchOptions = {
 
 export type DispatchResult = {
   sessionId: string;
+  alias: string | null;
   worktree: string | null;
   finalText: string;
   cost: number | null;
@@ -33,4 +34,5 @@ export type SessionMeta = {
   cost: number;
   exitCode?: number;
   abortedAt?: number;
+  alias?: string;
 };

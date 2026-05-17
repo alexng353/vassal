@@ -1,13 +1,14 @@
-import { deleteSession, getSession } from "../lib/state.ts";
+import { displayId, resolveIdOrAlias } from "../lib/alias.ts";
+import { deleteSession } from "../lib/state.ts";
 import { removeWorktree } from "../lib/worktree.ts";
 
 export async function runCleanup(
-  sessionId: string,
+  input: string,
   options: { force?: boolean } = {},
 ): Promise<number> {
-  const meta = await getSession(sessionId);
+  const meta = await resolveIdOrAlias(input);
   if (!meta) {
-    console.error(`unknown session: ${sessionId}`);
+    console.error(`unknown session: ${input}`);
     return 1;
   }
   if (meta.worktree) {
@@ -16,7 +17,7 @@ export async function runCleanup(
         meta.cwd,
         {
           path: meta.worktree,
-          branch: `vassal/${sessionId.slice(0, 12)}`,
+          branch: `vassal/${meta.id.slice(0, 12)}`,
           baseRef: "HEAD",
         },
         { force: options.force },
@@ -29,7 +30,7 @@ export async function runCleanup(
       return 1;
     }
   }
-  await deleteSession(sessionId);
-  console.log(`forgot session ${sessionId}`);
+  await deleteSession(meta.id);
+  console.log(`forgot session ${displayId(meta)}`);
   return 0;
 }

@@ -1,31 +1,32 @@
 import type { Part } from "@opencode-ai/sdk";
+import { displayId, resolveIdOrAlias } from "../lib/alias.ts";
 import { ensureDaemon } from "../lib/daemon.ts";
 import {
   listSessionMessages,
   makeClient,
   type SessionMessage,
 } from "../lib/opencode.ts";
-import { getSession } from "../lib/state.ts";
 import { deriveStatus } from "../lib/status.ts";
 
 const MAX_TEXT_CHARS = 400;
 const MAX_INPUT_CHARS = 200;
 
-export async function runPeek(sessionId: string): Promise<number> {
-  const meta = await getSession(sessionId);
+export async function runPeek(input: string): Promise<number> {
+  const meta = await resolveIdOrAlias(input);
   if (!meta) {
-    console.error(`unknown session: ${sessionId}`);
+    console.error(`unknown session: ${input}`);
     return 1;
   }
 
   const { state: daemon } = await ensureDaemon();
   const client = makeClient(daemon);
 
-  const messages = await listSessionMessages(client, sessionId);
+  const messages = await listSessionMessages(client, meta.id);
   const last = lastAssistantTurn(messages);
   const status = await deriveStatus(meta, client);
 
-  console.log(`SESSION ${meta.id}`);
+  console.log(`SESSION ${displayId(meta)}`);
+  if (meta.alias) console.log(`ID ${meta.id}`);
   console.log(`TITLE ${meta.title}`);
   console.log(`STATUS ${status}`);
   console.log(`LAST ${new Date(meta.lastActivityAt).toISOString()}`);

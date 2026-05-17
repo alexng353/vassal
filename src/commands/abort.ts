@@ -1,10 +1,11 @@
+import { displayId, resolveIdOrAlias } from "../lib/alias.ts";
 import { makeClient } from "../lib/opencode.ts";
-import { getSession, readDaemonState, writeSession } from "../lib/state.ts";
+import { readDaemonState, writeSession } from "../lib/state.ts";
 
-export async function runAbort(sessionId: string): Promise<number> {
-  const meta = await getSession(sessionId);
+export async function runAbort(input: string): Promise<number> {
+  const meta = await resolveIdOrAlias(input);
   if (!meta) {
-    console.error(`unknown session: ${sessionId}`);
+    console.error(`unknown session: ${input}`);
     return 1;
   }
 
@@ -15,7 +16,7 @@ export async function runAbort(sessionId: string): Promise<number> {
   }
 
   const client = makeClient(daemon);
-  const res = await client.session.abort({ path: { id: sessionId } });
+  const res = await client.session.abort({ path: { id: meta.id } });
   if (res.error !== undefined) {
     console.error(`abort failed: ${describeError(res.error)}`);
     return 1;
@@ -24,7 +25,7 @@ export async function runAbort(sessionId: string): Promise<number> {
   const now = Date.now();
   await writeSession({ ...meta, abortedAt: now, lastActivityAt: now });
 
-  console.log(`aborted session ${sessionId}`);
+  console.log(`aborted session ${displayId(meta)}`);
   return 0;
 }
 

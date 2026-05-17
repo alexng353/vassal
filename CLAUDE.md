@@ -65,6 +65,8 @@ EXIT <code>
 <final assistant text>
 ```
 
+`<id>` is a generated alias (`ses_word-word-word-word-word`, five EFF-short words) for any session created by this version of vassal; older sessions still show their opaque opencode IDs. All commands (`peek`, `abort`, `cleanup`, `status`, `--session`) accept either form — internally, vassal resolves alias → canonical opencode ID via `src/lib/alias.ts`.
+
 This contract is what makes vassal usable from a parent agent. Do not change line prefixes, separator, or ordering without updating the skill at `~/.claude/skills/vassal/SKILL.md`.
 
 `peek` and `abort` (mid-flight commands) have their own free-form output and do **not** follow the dispatch contract. `peek` prints metadata + a snapshot of the latest assistant turn (text/reasoning/tool calls); `abort` prints a one-line acknowledgement. Both are documented in the skill.

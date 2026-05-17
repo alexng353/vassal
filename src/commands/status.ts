@@ -1,12 +1,13 @@
-import { getSession } from "../lib/state.ts";
+import { displayId, resolveIdOrAlias } from "../lib/alias.ts";
 
-export async function runStatus(sessionId: string): Promise<number> {
-  const meta = await getSession(sessionId);
+export async function runStatus(input: string): Promise<number> {
+  const meta = await resolveIdOrAlias(input);
   if (!meta) {
-    console.error(`unknown session: ${sessionId}`);
+    console.error(`unknown session: ${input}`);
     return 1;
   }
-  console.log(`SESSION ${meta.id}`);
+  console.log(`SESSION ${displayId(meta)}`);
+  if (meta.alias) console.log(`ID ${meta.id}`);
   console.log(`TITLE ${meta.title}`);
   console.log(`CWD ${meta.cwd}`);
   console.log(`WORKTREE ${meta.worktree ?? "-"}`);
