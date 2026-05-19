@@ -51,8 +51,17 @@ async function startDaemon(): Promise<DaemonState> {
   const logFd = Bun.file(logPath).writer();
 
   const child = spawn(
-    "opencode",
-    ["serve", "--hostname", "127.0.0.1", "--port", String(port)],
+    "nice",
+    [
+      "-n",
+      "19",
+      "opencode",
+      "serve",
+      "--hostname",
+      "127.0.0.1",
+      "--port",
+      String(port),
+    ],
     {
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
