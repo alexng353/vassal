@@ -2,7 +2,12 @@ import { displayId } from "../lib/alias.ts";
 import { ensureDaemon } from "../lib/daemon.ts";
 import { makeClient, type OpencodeClient } from "../lib/opencode.ts";
 import { readSessions } from "../lib/state.ts";
-import { deriveStatus, type Status } from "../lib/status.ts";
+import {
+  deriveStatus,
+  listPendingQuestionsForStatus,
+  type Status,
+  worktreeMissing,
+} from "../lib/status.ts";
 import type { SessionMeta } from "../lib/types.ts";
 
 export async function runList(options: { maxAgeMs: number }): Promise<number> {
@@ -18,11 +23,15 @@ export async function runList(options: { maxAgeMs: number }): Promise<number> {
 
   const now = Date.now();
   const cutoff = now - options.maxAgeMs;
-  const client = await makeClientForLiveSessions(entries);
+  const daemonClient = await makeClientForLiveSessions(entries);
+  const pendingQuestions = daemonClient
+    ? await listPendingQuestionsForStatus(daemonClient.daemonUrl)
+    : [];
   const entriesWithStatus = await Promise.all(
     entries.map(async (meta) => ({
       meta,
-      status: await deriveStatus(meta, client),
+      status: await deriveStatus(meta, daemonClient?.client, pendingQuestions),
+      missing: worktreeMissing(meta),
     })),
   );
   const visible = entriesWithStatus.filter(
@@ -40,10 +49,10 @@ export async function runList(options: { maxAgeMs: number }): Promise<number> {
     console.log(
       `${"SESSION".padEnd(sessionWidth)}  ${"AGE".padEnd(7)}  ${"COST".padEnd(7)} ${"STATUS".padEnd(8)}  TITLE`,
     );
-    for (const { meta, status } of visible) {
+    for (const { meta, status, missing } of visible) {
       const age = humanAge(now - meta.lastActivityAt);
       const cost = `$${meta.cost.toFixed(2)}`;
-      console.log(formatRow(meta, age, cost, status, sessionWidth));
+      console.log(formatRow(meta, age, cost, status, missing, sessionWidth));
     }
   }
 
@@ -55,11 +64,11 @@ export async function runList(options: { maxAgeMs: number }): Promise<number> {
 
 async function makeClientForLiveSessions(
   entries: Array<SessionMeta>,
-): Promise<OpencodeClient | undefined> {
+): Promise<{ client: OpencodeClient; daemonUrl: string } | undefined> {
   if (entries.every(hasTerminalState)) return undefined;
 
   const { state: daemon } = await ensureDaemon();
-  return makeClient(daemon);
+  return { client: makeClient(daemon), daemonUrl: daemon.url };
 }
 
 function hasTerminalState(meta: SessionMeta): boolean {
@@ -71,9 +80,11 @@ function formatRow(
   age: string,
   cost: string,
   status: Status,
+  missing: boolean,
   sessionWidth: number,
 ): string {
-  return `${displayId(meta).padEnd(sessionWidth)}  ${age.padEnd(7)}  ${cost.padEnd(7)} ${status.padEnd(8)}  ${meta.title}`;
+  const displayStatus = missing ? `${status} [missing]` : status;
+  return `${displayId(meta).padEnd(sessionWidth)}  ${age.padEnd(7)}  ${cost.padEnd(7)} ${displayStatus.padEnd(8)}  ${meta.title}`;
 }
 
 function humanAge(ms: number): string {

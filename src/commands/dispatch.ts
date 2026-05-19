@@ -1,4 +1,6 @@
+import { resolve } from "node:path";
 import { generateAlias, resolveIdOrAlias } from "../lib/alias.ts";
+import { readVassalConfig } from "../lib/config.ts";
 import { ensureDaemon } from "../lib/daemon.ts";
 import {
   createSession,
@@ -11,18 +13,30 @@ import { getSession, writeSession } from "../lib/state.ts";
 import type { DispatchOptions, DispatchResult } from "../lib/types.ts";
 import {
   createWorktree,
+  defaultWorktreeRoot,
   isInsideGitRepo,
   useExternalWorktree,
   type WorktreeHandle,
 } from "../lib/worktree.ts";
 
 export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
-  const baseCwd = opts.cwd ?? process.cwd();
+  const baseCwd = opts.cwd ? resolve(opts.cwd) : process.cwd();
   const useWorktree = opts.worktree ?? true;
 
   if (opts.worktreePath && opts.worktree === false) {
     throw new Error("--worktree <path> conflicts with --no-worktree");
   }
+  if (opts.worktreeRoot && opts.worktreePath) {
+    throw new Error("--worktree-root <path> conflicts with --worktree <path>");
+  }
+  if (opts.worktreeRoot && opts.worktree === false) {
+    throw new Error("--worktree-root <path> conflicts with --no-worktree");
+  }
+
+  const config = await readVassalConfig(baseCwd);
+  const worktreeRoot = opts.worktreeRoot
+    ? resolve(opts.worktreeRoot)
+    : (config.worktreeRoot ?? defaultWorktreeRoot());
 
   let workCwd = baseCwd;
   let externalWorktreePath: string | null = null;
@@ -46,7 +60,7 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
     if (opts.worktreePath) {
       externalWorktreePath = await useExternalWorktree(
         baseCwd,
-        opts.worktreePath,
+        resolve(opts.worktreePath),
       );
       workCwd = externalWorktreePath;
     } else if (useWorktree) {
@@ -56,7 +70,7 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
         );
       }
       const tempId = `pre-${Date.now().toString(36)}`;
-      worktreeHandle = await createWorktree(baseCwd, tempId);
+      worktreeHandle = await createWorktree(baseCwd, tempId, worktreeRoot);
       workCwd = worktreeHandle.path;
     }
 

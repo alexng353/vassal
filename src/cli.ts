@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import dedent from "dedent";
 import { runAbort } from "./commands/abort.ts";
+import { runAnswer } from "./commands/answer.ts";
 import { runCleanup } from "./commands/cleanup.ts";
 import { runDispatch } from "./commands/dispatch.ts";
 import { runList } from "./commands/list.ts";
@@ -22,22 +23,33 @@ const HELP = dedent`
     vassal list [--all] [--max-age <dur>] list known sessions (default: 24h)
     vassal status <session-id>            show metadata for a session
     vassal peek <session-id>              snapshot of the latest turn
+    vassal answer <session-id> <answer>   reply to a pending question
+    vassal answer <session-id> --reject   reject a pending question
     vassal abort <session-id>             interrupt an in-flight session
     vassal cleanup <session-id> [--force] remove worktree and forget session
+    vassal cleanup --orphans              forget sessions with missing worktrees
     vassal server start|stop|status       manage the opencode daemon
 
   FLAGS
-    --session <id>     resume a session by id
-    --model <p/m>      provider/model (default: openai/gpt-5.5)
-    --worktree <path>  use this path; runs [vassal] worktree_setup if missing
-    --no-worktree      run in current cwd instead of a fresh worktree
-    --cwd <path>       override base cwd (defaults to current directory)
-    --all              show all sessions regardless of age (sugar for --max-age 0)
-    --max-age <dur>    hide sessions older than this (default: 24h; e.g. 7d, 30m)
+    --session <id>          resume a session by id
+    --model <p/m>           provider/model (default: openai/gpt-5.5)
+    --prompt-file <path>    read prompt from a UTF-8 file; conflicts with prompt args
+    --worktree <path>       use this path; runs [vassal] worktree_setup if missing
+    --worktree-root <path>  root for fresh worktrees; conflicts with --worktree
+    --no-worktree           run in current cwd instead of a fresh worktree
+    --cwd <path>            override base cwd (defaults to current directory)
+    --all                   show all sessions regardless of age (sugar for --max-age 0)
+    --max-age <dur>         hide sessions older than this (default: 24h; e.g. 7d, 30m)
+
+  ANSWERS
+    For one pending prompt, pass one answer or multiple labels for multi-select.
+    For multiple prompts, pass one positional answer per prompt.
+    Multi-select answers may also be comma-separated, e.g. "A,B".
 
   CONFIG (.alex.toml at repo root)
     [vassal]
-    worktree_setup = "work init {path}"   # {path} is substituted
+    worktree_setup = "work init {path}"        # {path} is substituted
+    worktree_root = ".vassal-worktrees"        # relative to .alex.toml directory
 
   OUTPUT (dispatch)
     SESSION <id>
@@ -54,7 +66,14 @@ type ParsedArgs = {
   flags: Record<string, string | true>;
 };
 
-const BOOLEAN_FLAGS = new Set(["no-worktree", "all", "force", "help"]);
+const BOOLEAN_FLAGS = new Set([
+  "no-worktree",
+  "all",
+  "force",
+  "help",
+  "reject",
+  "orphans",
+]);
 
 function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
@@ -87,6 +106,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     "list",
     "status",
     "peek",
+    "answer",
     "abort",
     "cleanup",
     "server",
@@ -143,6 +163,16 @@ async function main(): Promise<number> {
       }
       return runPeek(id);
     }
+    case "answer": {
+      const id = positional[0];
+      if (!id) {
+        console.error("answer requires a session id");
+        return 2;
+      }
+      return runAnswer(id, positional.slice(1), {
+        reject: flags.reject === true,
+      });
+    }
     case "abort": {
       const id = positional[0];
       if (!id) {
@@ -153,11 +183,14 @@ async function main(): Promise<number> {
     }
     case "cleanup": {
       const id = positional[0];
-      if (!id) {
+      if (!id && flags.orphans !== true) {
         console.error("cleanup requires a session id");
         return 2;
       }
-      return runCleanup(id, { force: flags.force === true });
+      return runCleanup(id ?? "", {
+        force: flags.force === true,
+        orphans: flags.orphans === true,
+      });
     }
     case "server": {
       const sub = positional[0];
@@ -168,7 +201,17 @@ async function main(): Promise<number> {
       return 2;
     }
     default: {
-      const prompt = positional.join(" ").trim();
+      const promptFile =
+        typeof flags["prompt-file"] === "string"
+          ? flags["prompt-file"]
+          : undefined;
+      if (promptFile && positional.length > 0) {
+        console.error("--prompt-file conflicts with positional prompt");
+        return 2;
+      }
+      const prompt = promptFile
+        ? await Bun.file(promptFile).text()
+        : positional.join(" ").trim();
       if (!prompt) {
         console.error("missing prompt. run `vassal --help` for usage.");
         return 2;
@@ -182,6 +225,10 @@ async function main(): Promise<number> {
         worktree: flags["no-worktree"] !== true,
         worktreePath:
           typeof flags.worktree === "string" ? flags.worktree : undefined,
+        worktreeRoot:
+          typeof flags["worktree-root"] === "string"
+            ? flags["worktree-root"]
+            : undefined,
       });
     }
   }

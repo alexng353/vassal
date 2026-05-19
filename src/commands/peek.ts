@@ -2,8 +2,10 @@ import type { Part } from "@opencode-ai/sdk";
 import { displayId, resolveIdOrAlias } from "../lib/alias.ts";
 import { ensureDaemon } from "../lib/daemon.ts";
 import {
+  listPendingQuestions,
   listSessionMessages,
   makeClient,
+  type PendingQuestion,
   type SessionMessage,
 } from "../lib/opencode.ts";
 import { deriveStatus } from "../lib/status.ts";
@@ -22,8 +24,12 @@ export async function runPeek(input: string): Promise<number> {
   const client = makeClient(daemon);
 
   const messages = await listSessionMessages(client, meta.id);
+  const questions = await listPendingQuestions(daemon.url);
+  const pendingQuestion = questions.find(
+    (question) => question.sessionID === meta.id,
+  );
   const last = lastAssistantTurn(messages);
-  const status = await deriveStatus(meta, client);
+  const status = await deriveStatus(meta, client, questions);
 
   console.log(`SESSION ${displayId(meta)}`);
   if (meta.alias) console.log(`ID ${meta.id}`);
@@ -32,6 +38,11 @@ export async function runPeek(input: string): Promise<number> {
   console.log(`LAST ${new Date(meta.lastActivityAt).toISOString()}`);
   console.log(`COST $${meta.cost.toFixed(4)}`);
   console.log("---");
+
+  if (pendingQuestion) {
+    printPendingQuestion(pendingQuestion);
+    console.log("");
+  }
 
   const lastUser = lastUserMessage(messages);
   if (lastUser) {
@@ -53,6 +64,19 @@ export async function runPeek(input: string): Promise<number> {
   }
 
   return 0;
+}
+
+function printPendingQuestion(request: PendingQuestion): void {
+  console.log(`PENDING QUESTION ${request.id}`);
+  for (const question of request.questions) {
+    console.log(`  header:   ${question.header}`);
+    console.log(`  question: ${question.question}`);
+    console.log("  options:");
+    for (const option of question.options) {
+      const suffix = option.description ? `  (${option.description})` : "";
+      console.log(`    - ${option.label}${suffix}`);
+    }
+  }
 }
 
 function lastAssistantTurn(

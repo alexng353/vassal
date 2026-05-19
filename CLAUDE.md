@@ -79,13 +79,15 @@ This contract is what makes vassal usable from a parent agent. Do not change lin
 
 ## Worktree lifecycle
 
-A new dispatch (no `--session`) creates a worktree at `$TMPDIR/vassal-wt-<short-id>` on a branch `vassal/<short-id>` off the current HEAD. The dispatched agent edits there. The parent orchestrator is responsible for:
+A new dispatch (no `--session`) creates a worktree at `$XDG_CACHE_HOME/vassal/worktrees/vassal-wt-<short-id>` (defaulting to `~/.cache/vassal/worktrees/`) on a branch `vassal/<short-id>` off the current HEAD. The dispatched agent edits there. The parent orchestrator is responsible for:
 
 - Reviewing the diff (`git -C <worktree> diff`)
 - Merging or discarding (typically rebase-merge into the parent branch)
 - Cleanup via `vassal cleanup <session-id>` (removes worktree + branch + forgets session)
 
 `--no-worktree` runs in the parent's cwd; only use when the parent explicitly wants in-place edits.
+
+`--worktree-root <path>` overrides the default root for fresh worktrees. `[vassal] worktree_root` in `.alex.toml` does the same for the project; relative paths resolve against the `.alex.toml` directory. Both are mutually exclusive with `--worktree` and `--no-worktree`.
 
 `--worktree <path>` lets the caller pin the dispatch to a specific path (e.g. an existing worktree, or one your own tooling will create). If the path doesn't exist, vassal looks for a `[vassal] worktree_setup` command in `.alex.toml` at the repo root, substitutes `{path}`, and runs it via `bash -c`. If setup is configured but the path still doesn't exist after the command, vassal errors. Mutually exclusive with `--no-worktree`.
 

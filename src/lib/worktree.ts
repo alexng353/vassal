@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { readVassalConfig } from "./config.ts";
@@ -9,6 +9,11 @@ export type WorktreeHandle = {
   branch: string;
   baseRef: string;
 };
+
+export function defaultWorktreeRoot(): string {
+  const cacheHome = process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache");
+  return join(cacheHome, "vassal", "worktrees");
+}
 
 export async function isInsideGitRepo(cwd: string): Promise<boolean> {
   try {
@@ -22,6 +27,7 @@ export async function isInsideGitRepo(cwd: string): Promise<boolean> {
 export async function createWorktree(
   baseCwd: string,
   sessionId: string,
+  root: string,
 ): Promise<WorktreeHandle> {
   const head = (await $`git -C ${baseCwd} rev-parse --abbrev-ref HEAD`.quiet())
     .text()
@@ -30,12 +36,13 @@ export async function createWorktree(
 
   const shortId = sessionId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 12);
   const branch = `vassal/${shortId}`;
-  const path = join(tmpdir(), `vassal-wt-${shortId}`);
+  const path = join(root, `vassal-wt-${shortId}`);
 
   if (existsSync(path)) {
     throw new Error(`worktree path already exists: ${path}`);
   }
 
+  mkdirSync(root, { recursive: true });
   await $`git -C ${baseCwd} worktree add -b ${branch} ${path} ${baseRef}`.quiet();
   return { path, branch, baseRef };
 }

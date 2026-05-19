@@ -4,6 +4,19 @@ import type { DaemonState } from "./types.ts";
 
 export type OpencodeClient = ReturnType<typeof createOpencodeClient>;
 
+export type PendingQuestion = {
+  id: string;
+  sessionID: string;
+  questions: Array<{
+    question: string;
+    header: string;
+    options: Array<{ label: string; description: string }>;
+    multiple?: boolean;
+    custom?: boolean;
+  }>;
+  tool?: { messageID: string; callID: string };
+};
+
 export function makeClient(daemon: DaemonState): OpencodeClient {
   return createOpencodeClient({ baseUrl: daemon.url });
 }
@@ -101,6 +114,62 @@ export async function listOpencodeSessions(
   const res = await client.session.list();
   if (!res.data) return [];
   return res.data.map((s) => ({ id: s.id, title: s.title }));
+}
+
+export async function listPendingQuestions(
+  daemonUrl: string,
+): Promise<Array<PendingQuestion>> {
+  return fetchJson<Array<PendingQuestion>>(daemonUrl, "/question", {
+    method: "GET",
+  });
+}
+
+export async function replyQuestion(
+  daemonUrl: string,
+  requestId: string,
+  answers: Array<Array<string>>,
+): Promise<void> {
+  await fetchJson(daemonUrl, `/question/${requestId}/reply`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ answers }),
+  });
+}
+
+export async function rejectQuestion(
+  daemonUrl: string,
+  requestId: string,
+): Promise<void> {
+  await fetchJson(daemonUrl, `/question/${requestId}/reject`, {
+    method: "POST",
+  });
+}
+
+async function fetchJson<T = unknown>(
+  daemonUrl: string,
+  path: string,
+  init: RequestInit,
+): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(new URL(path, daemonUrl), {
+      ...init,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
+    }
+    if (res.status === 204) return undefined as T;
+    return (await res.json()) as T;
+  } catch (err) {
+    if (err instanceof Error) {
+      throw new Error(`opencode ${path} failed: ${err.message}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function describeError(err: unknown): string {

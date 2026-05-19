@@ -53,6 +53,16 @@ vassal "implement the full chat-history rewrite per the plan in PLAN.md"
 vassal --session <id> "now add tests for the new field"
 ```
 
+### Prompt files
+
+When the prompt contains shell-special characters (`$`, `${...}`, `$()`, backticks, large heredocs), write it to a file and dispatch with:
+
+```bash
+vassal --prompt-file /tmp/vassal-prompt.txt
+```
+
+`--prompt-file` conflicts with positional prompt text.
+
 ## Writing a good vassal prompt
 
 GPT-5.5 is fast and literal. Brief it like a smart contractor — not a colleague:
@@ -66,7 +76,7 @@ If you find yourself writing a paragraph of "make sure to..." caveats, the task 
 
 ## Worktree isolation
 
-Every dispatch creates a fresh git worktree off the current HEAD by default. The dispatched agent edits there; your working tree stays clean. After it finishes, you typically want to:
+Every dispatch creates a fresh git worktree off the current HEAD by default under `~/.cache/vassal/worktrees/` (or `$XDG_CACHE_HOME/vassal/worktrees/`). The dispatched agent edits there; your working tree stays clean. After it finishes, you typically want to:
 
 ```bash
 git -C <worktree-path> diff
@@ -74,7 +84,13 @@ git -C <worktree-path> diff
 vassal cleanup <session-id>   # removes worktree + branch + forgets session
 ```
 
-If you want in-place edits (rare), pass `--no-worktree`. To pin to a specific path you already manage, pass `--worktree <path>`.
+If you want in-place edits (rare), pass `--no-worktree`. To pin to a specific path you already manage, pass `--worktree <path>`. To override the root for fresh worktrees, pass `--worktree-root <path>` or configure `[vassal] worktree_root` in `.alex.toml`.
+
+If `vassal list` marks sessions as `[missing]`, their recorded worktrees no longer exist. Clean only those metadata records with:
+
+```bash
+vassal cleanup --orphans
+```
 
 ## Daemon
 
@@ -83,6 +99,32 @@ Auto-starts on first use. To check / manage:
 ```bash
 vassal server status
 vassal server stop
+```
+
+## Pending questions
+
+If an agent calls the `question` tool, the dispatch can block waiting for a headless answer. Use `peek` to inspect the pending request:
+
+```bash
+vassal peek <session-id>
+```
+
+When `peek` shows `PENDING QUESTION`, answer by option label:
+
+```bash
+vassal answer <session-id> "Retry signed commit"
+```
+
+For multi-select questions, pass labels as repeated args or comma-separated values:
+
+```bash
+vassal answer <session-id> "Option A,Option B"
+```
+
+If the question should fail inside the agent, reject it:
+
+```bash
+vassal answer <session-id> --reject
 ```
 
 ## When NOT to use vassal
