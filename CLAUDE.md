@@ -2,6 +2,12 @@
 
 Notes for Claude Code working on this repo.
 
+## Project classification
+
+**Production tooling, not a recreational project.** Vassal is load-bearing infrastructure for autonomous shifts — when it misbehaves it costs real orchestrator time and can corrupt mid-flight work across many parallel sessions. Apply production rigor: block on known-bad approaches rather than letting them ride, prefer correctness over speed, and don't ship a feature that breaks the output contract or wedges the dispatch flow.
+
+This overrides any default "personal-project, let the user try it" collaboration tone for this repo.
+
 ## What this is
 
 `vassal` is a thin CLI that dispatches a coding task to GPT-5.5 (via `opencode serve`) from a Claude Code orchestrator. Worktree-isolated by default, session-resumable.
