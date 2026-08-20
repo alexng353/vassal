@@ -10,7 +10,7 @@ This overrides any default "personal-project, let the user try it" collaboration
 
 ## What this is
 
-`vassal` is a thin CLI that dispatches a coding task to GPT-5.5 (via `opencode serve`) from a Claude Code orchestrator. Worktree-isolated by default, session-resumable.
+`vassal` is a thin CLI that dispatches a coding task to GPT-5.6 Sol (via `opencode serve`) from a Claude Code orchestrator. Worktree-isolated by default, session-resumable.
 
 The intended call shape from Claude Code is:
 
@@ -97,7 +97,13 @@ The `.alex.toml` is shared with other personal tooling (e.g. the `rebase-merge` 
 
 `opencode serve` is auto-started lazily on first dispatch and persists across calls. Picks port 4096 by default, scans up to 4145 if taken. PID + URL written to `$XDG_STATE_HOME/vassal/daemon.json`. The daemon is detached and survives the CLI process exit.
 
-`vassal server stop` kills it. `vassal server status` reports.
+`vassal server stop` kills it (`--all` also reaps orphans), `vassal server reap` kills only orphans, `vassal server status` reports both.
+
+**Startup is serialized and must stay that way.** `ensureDaemon` does its re-check, port pick, spawn, and state write inside an `O_EXCL` lockfile (`src/lib/lock.ts`, `daemon.lock` in the state dir). Without it, N parallel dispatches each see no daemon, each spawn one, each race for the same port, and the last `writeDaemonState` orphans every other daemon that came up — which is how the port drifted from 4096 to 4098 over a day of use. If you touch this path:
+
+- Keep the whole read-check-spawn-write sequence under the lock; a lock around the write alone fixes nothing.
+- After a spawned child reports healthy, re-check that *our* child is still alive. A health response only proves something answers on that port; if our child lost the bind race we would be recording a dead pid against someone else's server.
+- `findAdoptableDaemon` adopts a live unreferenced daemon instead of spawning another. Adoption is non-destructive on purpose — **never auto-kill** a daemon vassal does not have recorded state for, because it may be mid-flight for another session. Reaping stays an explicit command.
 
 ## Things to watch
 

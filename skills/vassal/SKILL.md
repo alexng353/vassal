@@ -1,13 +1,13 @@
 ---
 name: vassal
-description: Dispatch a coding task to GPT-5.5 (via opencode) instead of doing it yourself. Use when the user says "vassal it", "delegate this", "have GPT do it", "send this to vassal", "dispatch this to gpt-5.5", or asks you to hand off mechanical implementation work to a faster/cheaper executor while you orchestrate. Also use proactively for tasks that are well-specified, mechanical, and don't benefit from your judgment — you remain the orchestrator and reviewer.
+description: Dispatch a coding task to GPT-5.6 Sol (via opencode) instead of doing it yourself. Use when the user says "vassal it", "delegate this", "have GPT do it", "send this to vassal", "dispatch this to GPT-5.6 Sol", or asks you to hand off mechanical implementation work to a faster/cheaper executor while you orchestrate. Also use proactively for tasks that are well-specified, mechanical, and don't benefit from your judgment — you remain the orchestrator and reviewer.
 ---
 
-# vassal — dispatch to GPT-5.5
+# vassal — dispatch to GPT-5.6 Sol
 
-`vassal` is a CLI that hands off a fully-specified coding task to GPT-5.5 (running inside an opencode daemon). Use it when:
+`vassal` is a CLI that hands off a fully-specified coding task to GPT-5.6 Sol (running inside an opencode daemon). Use it when:
 
-1. The task is mechanical (well-defined edits across known files) — GPT-5.5 is faster and cheaper than running it through Claude.
+1. The task is mechanical (well-defined edits across known files) — GPT-5.6 Sol is faster and cheaper than running it through Claude.
 2. You've already done the planning and just need execution.
 3. You want to fan out parallel work — multiple `vassal` calls can run concurrently against the same daemon.
 
@@ -53,6 +53,14 @@ vassal "implement the full chat-history rewrite per the plan in PLAN.md"
 vassal --session <id> "now add tests for the new field"
 ```
 
+### Reasoning effort
+
+```bash
+vassal --effort xhigh "implement the concurrency rewrite"
+```
+
+`--effort` is separate from `--model`; do not append it to the model ID. Vassal validates the level against the selected model's live OpenCode provider data. The default is `openai/gpt-5.6-sol` at `xhigh`; that model also supports `none`, `low`, `medium`, and `high`.
+
 ### Prompt files
 
 When the prompt contains shell-special characters (`$`, `${...}`, `$()`, backticks, large heredocs), write it to a file and dispatch with:
@@ -65,12 +73,12 @@ vassal --prompt-file /tmp/vassal-prompt.txt
 
 ## Writing a good vassal prompt
 
-GPT-5.5 is fast and literal. Brief it like a smart contractor — not a colleague:
+GPT-5.6 Sol is fast and literal. Brief it like a smart contractor — not a colleague:
 
 - Name files and line numbers explicitly. Don't say "around the chat handler" — say `apps/api/src/routes/websockets/handlers/chat.ts:514`.
 - State the contract: what it should look like *after*, not just what to change.
 - Include any non-obvious constraints (style rules, conventions, etc.) — vassal's executor doesn't share your CLAUDE.md context unless you paste it.
-- For multi-step work: enumerate. GPT-5.5 follows numbered lists religiously.
+- For multi-step work: enumerate. GPT-5.6 Sol follows numbered lists religiously.
 
 If you find yourself writing a paragraph of "make sure to..." caveats, the task is probably not mechanical enough — keep it yourself.
 
@@ -94,12 +102,25 @@ vassal cleanup --orphans
 
 ## Daemon
 
-Auto-starts on first use. To check / manage:
+Auto-starts on first use, and concurrent dispatches share one daemon (startup is
+lockfile-serialized, so fan-out is safe). To check / manage:
 
 ```bash
-vassal server status
-vassal server stop
+vassal server status       # pid, url, uptime, plus any unreferenced daemons
+vassal server stop         # kill the recorded daemon
+vassal server reap         # kill unreferenced daemons in 4096-4145
 ```
+
+`reap` is manual on purpose: an unreferenced daemon may still be serving another
+session's in-flight work.
+
+## Progress on stderr
+
+stdout carries the contract and only flushes at the end. While a dispatch runs,
+vassal writes progress to **stderr** — the session id as soon as it is created
+(so you can `peek`/`abort` a slow run without waiting), then a heartbeat every 30
+seconds. If a backgrounded dispatch looks hung, read stderr before killing it;
+killing mid-flight loses the turn. `--quiet` suppresses these lines.
 
 ## Pending questions
 

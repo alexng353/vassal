@@ -2,11 +2,13 @@ export type DispatchOptions = {
   prompt: string;
   sessionId?: string;
   model?: string;
+  effort?: string;
   cwd?: string;
   worktree?: boolean;
   worktreePath?: string;
   worktreeRoot?: string;
   maxTurns?: number;
+  quiet?: boolean;
 };
 
 export type DispatchResult = {

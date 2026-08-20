@@ -2,11 +2,13 @@
 import dedent from "dedent";
 import { runAbort } from "./commands/abort.ts";
 import { runAnswer } from "./commands/answer.ts";
+import { runAttach } from "./commands/attach.ts";
 import { runCleanup } from "./commands/cleanup.ts";
 import { runDispatch } from "./commands/dispatch.ts";
 import { runList } from "./commands/list.ts";
 import { runPeek } from "./commands/peek.ts";
 import {
+  runServerReap,
   runServerStart,
   runServerStatus,
   runServerStop,
@@ -15,7 +17,7 @@ import { runStatus } from "./commands/status.ts";
 import { parseDuration } from "./lib/duration.ts";
 
 const HELP = dedent`
-  vassal — dispatch coding tasks to GPT-5.5 via opencode.
+  vassal — dispatch coding tasks to GPT-5.6 Sol via opencode.
 
   USAGE
     vassal <prompt>                       dispatch a new task (worktree by default)
@@ -23,21 +25,26 @@ const HELP = dedent`
     vassal list [--all] [--max-age <dur>] list known sessions (default: 24h)
     vassal status <session-id>            show metadata for a session
     vassal peek <session-id>              snapshot of the latest turn
+    vassal attach <session-id>            block until terminal, emit dispatch contract
     vassal answer <session-id> <answer>   reply to a pending question
     vassal answer <session-id> --reject   reject a pending question
     vassal abort <session-id>             interrupt an in-flight session
     vassal cleanup <session-id> [--force] remove worktree and forget session
     vassal cleanup --orphans              forget sessions with missing worktrees
-    vassal server start|stop|status       manage the opencode daemon
+    vassal server start|status            manage the opencode daemon
+    vassal server stop [--all]            stop the daemon (--all also reaps orphans)
+    vassal server reap                    kill unreferenced daemons in 4096-4145
 
   FLAGS
     --session <id>          resume a session by id
-    --model <p/m>           provider/model (default: openai/gpt-5.5)
+    --model <p/m>           provider/model (default: openai/gpt-5.6-sol)
+    --effort <level>        reasoning effort (default: xhigh); validated per model
     --prompt-file <path>    read prompt from a UTF-8 file; conflicts with prompt args
     --worktree <path>       use this path; runs [vassal] worktree_setup if missing
     --worktree-root <path>  root for fresh worktrees; conflicts with --worktree
     --no-worktree           run in current cwd instead of a fresh worktree
     --cwd <path>            override base cwd (defaults to current directory)
+    --quiet                 suppress stderr progress lines (also VASSAL_QUIET=1)
     --all                   show all sessions regardless of age (sugar for --max-age 0)
     --max-age <dur>         hide sessions older than this (default: 24h; e.g. 7d, 30m)
 
@@ -73,6 +80,7 @@ const BOOLEAN_FLAGS = new Set([
   "help",
   "reject",
   "orphans",
+  "quiet",
 ]);
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -106,6 +114,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     "list",
     "status",
     "peek",
+    "attach",
     "answer",
     "abort",
     "cleanup",
@@ -163,6 +172,14 @@ async function main(): Promise<number> {
       }
       return runPeek(id);
     }
+    case "attach": {
+      const id = positional[0];
+      if (!id) {
+        console.error("attach requires a session id");
+        return 2;
+      }
+      return runAttach(id);
+    }
     case "answer": {
       const id = positional[0];
       if (!id) {
@@ -195,8 +212,9 @@ async function main(): Promise<number> {
     case "server": {
       const sub = positional[0];
       if (sub === "start") return runServerStart();
-      if (sub === "stop") return runServerStop();
+      if (sub === "stop") return runServerStop({ all: flags.all === true });
       if (sub === "status") return runServerStatus();
+      if (sub === "reap") return runServerReap();
       console.error(`unknown server subcommand: ${sub ?? "(none)"}`);
       return 2;
     }
@@ -207,6 +225,10 @@ async function main(): Promise<number> {
           : undefined;
       if (promptFile && positional.length > 0) {
         console.error("--prompt-file conflicts with positional prompt");
+        return 2;
+      }
+      if (flags.effort === true) {
+        console.error("--effort requires a value");
         return 2;
       }
       const prompt = promptFile
@@ -221,6 +243,7 @@ async function main(): Promise<number> {
         sessionId:
           typeof flags.session === "string" ? flags.session : undefined,
         model: typeof flags.model === "string" ? flags.model : undefined,
+        effort: typeof flags.effort === "string" ? flags.effort : undefined,
         cwd: typeof flags.cwd === "string" ? flags.cwd : undefined,
         worktree: flags["no-worktree"] !== true,
         worktreePath:
@@ -229,6 +252,7 @@ async function main(): Promise<number> {
           typeof flags["worktree-root"] === "string"
             ? flags["worktree-root"]
             : undefined,
+        quiet: flags.quiet === true,
       });
     }
   }
