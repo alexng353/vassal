@@ -1,8 +1,8 @@
 # vassal
 
-Dispatch coding tasks from a Claude Code orchestrator to a GPT-5.5 executor (via [opencode](https://opencode.ai)). Worktree-isolated, session-resumable.
+Dispatch coding tasks from a Claude Code orchestrator to a GPT-5.6 Sol executor (via [opencode](https://opencode.ai)). Worktree-isolated, session-resumable.
 
-The premise: Opus 4.7 is a great orchestrator, GPT-5.5 is a great executor. `vassal` is the bridge — it makes "delegate this to a different model" a one-liner from Claude Code's `Bash` tool.
+The premise: Opus 4.7 is a great orchestrator, GPT-5.6 Sol is a great executor. `vassal` is the bridge — it makes "delegate this to a different model" a one-liner from Claude Code's `Bash` tool.
 
 ## Install
 
@@ -23,6 +23,9 @@ vassal "fold incognito into chat_history WS, drop REST history call"
 # resume a session
 vassal --session ses_abc123 "now add tests for the new field"
 
+# select a model-specific reasoning effort
+vassal --effort xhigh "implement the concurrency rewrite"
+
 # list known sessions
 vassal list
 
@@ -32,6 +35,8 @@ vassal status ses_abc123
 # clean up worktree + forget session
 vassal cleanup ses_abc123
 ```
+
+`--effort <level>` is validated against the selected model's variants reported by the local OpenCode daemon. The default is `openai/gpt-5.6-sol` at `xhigh`; that model also supports `none`, `low`, `medium`, and `high`.
 
 ## Output contract
 
@@ -51,10 +56,26 @@ Parent agents parse the header by line prefix and the body by everything after `
 The CLI lazily starts `opencode serve` in the background on first use. Manage it with:
 
 ```bash
-vassal server start    # explicit start
-vassal server status   # show pid, url, uptime
-vassal server stop     # kill
+vassal server start        # explicit start
+vassal server status       # show pid, url, uptime, plus any orphans
+vassal server stop         # kill the recorded daemon
+vassal server stop --all   # ...and reap unreferenced ones in 4096-4145
+vassal server reap         # kill unreferenced daemons only
 ```
+
+Startup is serialized by a lockfile in the state dir, so concurrent `vassal`
+invocations start at most one daemon between them. A vassal that finds no
+recorded daemon but does find a live `opencode serve` in the port range adopts
+it rather than starting another. Adoption never kills anything — an
+unreferenced daemon may still be serving someone else's in-flight session — so
+reaping is explicit.
+
+## Progress output
+
+Dispatch only writes to stdout at the end, so `vassal` heartbeats on **stderr**
+(session id as soon as it exists, then `still working — 2m30s elapsed` every 30
+seconds). stdout stays exactly the output contract above. Silence it with
+`--quiet` or `VASSAL_QUIET=1`.
 
 ## Background dispatch from Claude Code
 
@@ -78,7 +99,7 @@ ln -s "$(pwd)/skills/vassal" ~/.claude/skills/vassal
 cp -r skills/vassal ~/.claude/skills/vassal
 ```
 
-Then in any Claude Code session, ask Claude to "vassal it" / "delegate this to gpt-5.5" / etc. and the skill activates.
+Then in any Claude Code session, ask Claude to "vassal it" / "delegate this to GPT-5.6 Sol" / etc. and the skill activates.
 
 ## Why not just use opencode directly?
 

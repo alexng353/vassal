@@ -9,6 +9,7 @@ import {
   sendPrompt,
 } from "../lib/opencode.ts";
 import { formatDispatchResult } from "../lib/output.ts";
+import { type Progress, SILENT, startProgress } from "../lib/progress.ts";
 import { getSession, writeSession } from "../lib/state.ts";
 import type { DispatchOptions, DispatchResult } from "../lib/types.ts";
 import {
@@ -19,7 +20,10 @@ import {
   type WorktreeHandle,
 } from "../lib/worktree.ts";
 
-export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
+export async function dispatch(
+  opts: DispatchOptions,
+  progress: Progress = SILENT,
+): Promise<DispatchResult> {
   const baseCwd = opts.cwd ? resolve(opts.cwd) : process.cwd();
   const useWorktree = opts.worktree ?? true;
 
@@ -53,7 +57,10 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
     }
   }
 
-  const { state: daemon } = await ensureDaemon();
+  const { state: daemon, reused } = await ensureDaemon();
+  progress.note(
+    `daemon ${reused ? "reused" : "started"} at ${daemon.url} (pid ${daemon.pid})`,
+  );
   const client = makeClient(daemon);
 
   if (!sessionId) {
@@ -90,6 +97,13 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
     });
   }
 
+  // Surface the handle before the (long) prompt call, so a stalled dispatch can
+  // still be peeked at or aborted without waiting for stdout.
+  progress.note(
+    `session ${alias ?? sessionId} — peek: vassal peek ${alias ?? sessionId}`,
+  );
+  if (workCwd !== baseCwd) progress.note(`worktree ${workCwd}`);
+
   let outcome: PromptOutcome | null = null;
   let exitCode = 1;
   let meta = await getSession(sessionId);
@@ -99,6 +113,7 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchResult> {
       prompt: opts.prompt,
       cwd: workCwd,
       model: opts.model,
+      effort: opts.effort,
     });
     exitCode = 0;
   } finally {
@@ -134,7 +149,12 @@ function derivTitle(prompt: string): string {
 }
 
 export async function runDispatch(opts: DispatchOptions): Promise<number> {
-  const result = await dispatch(opts);
-  console.log(formatDispatchResult(result));
-  return result.exitCode;
+  const progress = startProgress({ quiet: opts.quiet });
+  try {
+    const result = await dispatch(opts, progress);
+    console.log(formatDispatchResult(result));
+    return result.exitCode;
+  } finally {
+    progress.stop();
+  }
 }

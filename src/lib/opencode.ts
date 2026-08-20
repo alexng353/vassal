@@ -43,6 +43,7 @@ export type PromptOptions = {
   prompt: string;
   cwd: string;
   model?: string;
+  effort?: string;
 };
 
 export type PromptOutcome = {
@@ -50,24 +51,35 @@ export type PromptOutcome = {
   cost: number | null;
 };
 
+const DEFAULT_MODEL = "openai/gpt-5.6-sol";
+const DEFAULT_EFFORT = "xhigh";
+
 export async function sendPrompt(
   client: OpencodeClient,
   opts: PromptOptions,
 ): Promise<PromptOutcome> {
-  const [providerID, modelID] = (opts.model ?? "openai/gpt-5.5").split("/");
+  const model = opts.model ?? DEFAULT_MODEL;
+  const effort = opts.effort ?? DEFAULT_EFFORT;
+  const [providerID, ...modelParts] = model.split("/");
+  const modelID = modelParts.join("/");
   if (!providerID || !modelID) {
     throw new Error(
       `invalid model "${opts.model}" — expected "<provider>/<model>"`,
     );
   }
 
+  await validateEffort(client, providerID, modelID, effort, opts.cwd);
+
+  const body = {
+    model: { providerID, modelID },
+    variant: effort,
+    parts: [{ type: "text" as const, text: opts.prompt }],
+  };
+
   const res = await client.session.prompt({
     path: { id: opts.sessionId },
     query: { directory: opts.cwd },
-    body: {
-      model: { providerID, modelID },
-      parts: [{ type: "text", text: opts.prompt }],
-    },
+    body,
   });
 
   if (!res.data) {
@@ -80,6 +92,42 @@ export async function sendPrompt(
     finalText: extractFinalText(res.data.parts),
     cost: res.data.info.cost ?? null,
   };
+}
+
+type ProviderCatalog = {
+  all: Array<{
+    id: string;
+    models: Record<string, { variants?: Record<string, unknown> }>;
+  }>;
+};
+
+async function validateEffort(
+  client: OpencodeClient,
+  providerID: string,
+  modelID: string,
+  effort: string,
+  cwd: string,
+): Promise<void> {
+  const res = await client.provider.list({ query: { directory: cwd } });
+  if (!res.data) {
+    throw new Error(
+      `opencode provider.list failed: ${describeError(res.error)}`,
+    );
+  }
+
+  const catalog = res.data as unknown as ProviderCatalog;
+  const provider = catalog.all.find((item) => item.id === providerID);
+  const model = provider?.models[modelID];
+  if (!model) {
+    throw new Error(`model "${providerID}/${modelID}" is not available`);
+  }
+
+  const available = Object.keys(model.variants ?? {});
+  if (!available.includes(effort)) {
+    throw new Error(
+      `effort "${effort}" is not supported by ${providerID}/${modelID}; available: ${available.join(", ") || "none"}`,
+    );
+  }
 }
 
 function extractFinalText(parts: Array<Part>): string {
