@@ -1,5 +1,6 @@
 import { displayId, resolveIdOrAlias } from "../lib/alias.ts";
 import { formatModelLabel } from "../lib/model.ts";
+import { formatCost } from "../lib/output.ts";
 
 export async function runStatus(input: string): Promise<number> {
   const meta = await resolveIdOrAlias(input);
@@ -19,6 +20,6 @@ export async function runStatus(input: string): Promise<number> {
   console.log(`WORKTREE ${meta.worktree ?? "-"}`);
   console.log(`CREATED ${new Date(meta.createdAt).toISOString()}`);
   console.log(`LAST ${new Date(meta.lastActivityAt).toISOString()}`);
-  console.log(`COST $${meta.cost.toFixed(4)}`);
+  console.log(`COST ${formatCost(meta.cost)}`);
   return 0;
 }

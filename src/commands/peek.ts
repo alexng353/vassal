@@ -10,6 +10,7 @@ import {
   type PendingQuestion,
   type SessionMessage,
 } from "../lib/opencode.ts";
+import { formatCost } from "../lib/output.ts";
 import { deriveStatus, latestActivityAt } from "../lib/status.ts";
 import { sessionDirectory } from "../lib/types.ts";
 
@@ -46,7 +47,7 @@ export async function runPeek(input: string): Promise<number> {
   console.log(
     `LAST ${new Date(latestActivityAt(meta, messages)).toISOString()}`,
   );
-  console.log(`COST $${meta.cost.toFixed(4)}`);
+  console.log(`COST ${formatCost(meta.cost)}`);
   console.log("---");
 
   if (pendingQuestion) {

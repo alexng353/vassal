@@ -2,6 +2,7 @@ import { displayId } from "../lib/alias.ts";
 import { ensureDaemon } from "../lib/daemon.ts";
 import { formatModelLabel } from "../lib/model.ts";
 import { makeClient, type OpencodeClient } from "../lib/opencode.ts";
+import { formatCost } from "../lib/output.ts";
 import { readSessions } from "../lib/state.ts";
 import {
   deriveStatus,
@@ -73,7 +74,7 @@ export async function runList(options: {
     );
     for (const { meta, status, missing } of visible) {
       const age = humanAge(now - meta.lastActivityAt);
-      const cost = `$${meta.cost.toFixed(2)}`;
+      const cost = formatCost(meta.cost, 2);
       console.log(
         formatRow(meta, age, cost, status, missing, sessionWidth, modelWidth),
       );

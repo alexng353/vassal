@@ -145,7 +145,9 @@ export class BoxSink implements StreamSink {
       { label: state.status, style: statusStyle(state.status) },
       ...(state.model ? [{ label: state.model }] : []),
       { label: formatElapsed(Date.now() - state.startedAt) },
-      { label: `$${state.cost.toFixed(4)}` },
+      // A zero cost is a subscription turn, not a free one — show nothing
+      // rather than a price that isn't what it cost.
+      ...(state.cost ? [{ label: `$${state.cost.toFixed(4)}` }] : []),
     ];
     if (state.tokens) {
       tags.push({
