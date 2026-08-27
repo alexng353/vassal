@@ -16,10 +16,15 @@ export const ansi = {
   reset: "\x1b[0m",
 };
 
-/** Strip ANSI escape codes for visible-length measurement. */
+/**
+ * Strip ANSI escape codes for visible-length measurement. Covers every CSI
+ * sequence, not just colour: cursor moves and mode switches such as `?7l` take
+ * up no columns either, and counting them as width silently inflates every
+ * measurement taken on a rendered frame.
+ */
 export function stripAnsi(s: string): string {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape matching requires control chars
-  return s.replace(/\x1b\[[0-9;]*m/g, "");
+  return s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
 }
 
 /**

@@ -73,6 +73,43 @@ describe("BoxModel", () => {
     expect(rows(box.render(COLS))).toBe(empty);
   });
 
+  test("no row is ever wider than the terminal", () => {
+    // An over-wide row wraps onto a second physical row, so the frame occupies
+    // more rows than it emitted and every later rewind lands one row short —
+    // which is how a stray `┌` survives the erase.
+    const longTitle = "ses_energy-senator-dinnerware-brushes-civilian";
+    for (const cols of [200, 120, 80, 60, 50, 40, 30, 20, 12]) {
+      const box = new BoxModel(4);
+      box.title = longTitle;
+      box.setChin([
+        { label: longTitle },
+        { label: "running" },
+        { label: "42m31s" },
+        { label: "$0.0000" },
+        { label: "520k↑ 21k↓" },
+      ]);
+      box.addLine("x".repeat(300));
+
+      const rows = box
+        .render(cols)
+        .split("\n")
+        .slice(0, -1)
+        .map((r) => stripAnsi(r).length);
+      expect({ cols, over: rows.filter((w) => w > cols) }).toEqual({
+        cols,
+        over: [],
+      });
+    }
+  });
+
+  test("a title too wide for the border is clipped, not overflowed", () => {
+    const box = new BoxModel(2);
+    box.title = "an-extremely-long-session-alias-that-will-not-fit";
+    const border = stripAnsi(box.render(30).split("\n")[0] ?? "");
+    expect(border.length).toBe(30);
+    expect(border).toContain("…");
+  });
+
   test("the chin renders below the frame", () => {
     const box = new BoxModel(2);
     box.setChin([{ label: "ses_x" }, { label: "running" }]);

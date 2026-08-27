@@ -2,6 +2,15 @@ import { ansi, splitAtWidth, stripAnsi, wrapLine } from "./ansi.ts";
 
 export type ChinTag = { label: string; style?: (s: string) => string };
 
+/** ` title `, clipped so it can never be wider than the border it sits in. */
+function fitTitle(title: string, width: number): string {
+  const padded = ` ${title} `;
+  if (padded.length <= width) return padded;
+  return width <= 2
+    ? " ".repeat(Math.max(0, width))
+    : ` ${title.slice(0, width - 3)}… `;
+}
+
 function countRows(frame: string): number {
   let rows = 0;
   for (const char of frame) if (char === "\n") rows++;
@@ -169,10 +178,11 @@ export class BoxModel {
     // Disable line wrapping — the box does its own.
     out += DISABLE_WRAP;
 
-    const titleText = ` ${this.title} `;
-    const dashTotal = inner + 2 - titleText.length;
-    const left = Math.max(0, Math.floor(dashTotal / 2));
-    const right = Math.max(0, dashTotal - left);
+    // A title wider than the border would push the row past the terminal edge.
+    const titleText = fitTitle(this.title, inner + 2);
+    const dashTotal = Math.max(0, inner + 2 - titleText.length);
+    const left = Math.floor(dashTotal / 2);
+    const right = dashTotal - left;
     out += `${ansi.dim(`┌${"─".repeat(left)}`)}${ansi.bold(ansi.cyan(titleText))}${ansi.dim(`${"─".repeat(right)}┐`)}\n`;
 
     for (let i = 0; i < this.boxLines; i++) {
@@ -192,12 +202,19 @@ export class BoxModel {
 
     // Always emit the chin row, blank if there are no tags yet. A frame whose
     // height changes when the first tag lands would leave a stale row behind.
+    //
+    // Truncate it as well: an over-long chin wraps onto a second physical row,
+    // so the frame occupies one row more than it emitted, the next redraw
+    // rewinds one row short, and the top border survives every erase — the
+    // stray `┌` left sitting above the shell prompt.
     const chin = this.chinTags.length > 0 ? this.renderChin() : "";
+    const width = inner + 4;
     const chinVisible = stripAnsi(chin).length;
-    out +=
-      chinVisible < inner + 4
-        ? `${chin}${" ".repeat(inner + 4 - chinVisible)}\n`
-        : `${chin}\n`;
+    if (chinVisible > width) {
+      out += `${splitAtWidth(chin, width - 1)[0]}…\n`;
+    } else {
+      out += `${chin}${" ".repeat(width - chinVisible)}\n`;
+    }
 
     // Re-enable line wrapping.
     out += ENABLE_WRAP;
