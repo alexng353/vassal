@@ -16,6 +16,7 @@ import {
 import { runStatus } from "./commands/status.ts";
 import { runStream } from "./commands/stream.ts";
 import { parseDuration } from "./lib/duration.ts";
+import { exitAfterFlush } from "./lib/exit.ts";
 
 const HELP = dedent`
   vassal — dispatch coding tasks to GPT-5.6 Sol via opencode.
@@ -288,8 +289,8 @@ async function main(): Promise<number> {
 }
 
 main()
-  .then((code) => process.exit(code))
+  .then((code) => exitAfterFlush(code))
   .catch((err) => {
     console.error(`vassal: ${(err as Error).message}`);
-    process.exit(1);
+    exitAfterFlush(1);
   });

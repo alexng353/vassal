@@ -6,6 +6,7 @@ import {
   eventSessionId,
   subscribeEvents,
 } from "../lib/events.ts";
+import { exitAfterFlush } from "../lib/exit.ts";
 import {
   listPendingQuestions,
   listSessionMessages,
@@ -109,15 +110,12 @@ export async function runStream(
   const abort = new AbortController();
   const events = subscribeEvents(daemon.url, abort.signal);
 
-  // Leaving the terminal with a half-drawn box, a hidden cursor and wrapping
-  // disabled is what eats the next shell prompt, so tear the box down on every
-  // exit path — Ctrl-C included.
-  // Ctrl-C leaves nothing behind: the box is erased and the shell gets its
-  // screen back untouched. The session keeps running either way, so there is
-  // nothing here worth pasting into the scrollback.
+  // Ctrl-C leaves nothing behind: the box is erased and the terminal modes it
+  // changed are restored, so the shell gets its screen back untouched. The
+  // session keeps running either way, so there is nothing here worth keeping.
   const interrupted = (code: number) => () => {
     sink.close();
-    process.exit(code);
+    exitAfterFlush(code);
   };
   process.once("SIGINT", interrupted(130));
   process.once("SIGTERM", interrupted(143));
