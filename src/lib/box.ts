@@ -2,6 +2,14 @@ import { ansi, splitAtWidth, stripAnsi, wrapLine } from "./ansi.ts";
 
 export type ChinTag = { label: string; style?: (s: string) => string };
 
+const MIN_BOX_LINES = 4;
+/** Used when the terminal reports no height (piped output, no TTY). */
+const FALLBACK_BOX_LINES = 14;
+const HIDE_CURSOR = "\x1b[?25l";
+const SHOW_CURSOR = "\x1b[?25h";
+const DISABLE_WRAP = "\x1b[?7l";
+const ENABLE_WRAP = "\x1b[?7h";
+
 /**
  * Fixed-height scrolling status box, ported from chad (`src/box.ts`).
  *
@@ -20,8 +28,14 @@ export class BoxModel {
   /** Structured chin tags rendered below the bottom border. */
   chinTags: Array<ChinTag> = [];
 
-  private configuredBoxLines: number;
+  private configuredBoxLines: number | null;
   private drawn = false;
+  /**
+   * Height of the frame actually on screen. The cursor has to move back up by
+   * exactly what was drawn — recomputing from the current terminal size would
+   * desync the moment the window is resized between frames.
+   */
+  private drawnHeight = 0;
 
   /** Cached wrapped visual lines for committed content. */
   private wrappedCache: Array<string> = [];
@@ -33,17 +47,21 @@ export class BoxModel {
   /** Whether the most recent content was assistant text (vs tool/metadata). */
   private inText = false;
 
-  constructor(boxLines: number) {
+  /** `boxLines: null` sizes the box to the terminal on every draw. */
+  constructor(boxLines: number | null = null) {
     this.configuredBoxLines = boxLines;
   }
 
-  /** Effective content lines, clamped to fit the terminal. */
+  /** Effective content lines for the current terminal size. */
   private get boxLines(): number {
     const rows = process.stdout.rows || 0;
-    if (rows === 0) return this.configuredBoxLines;
-    // Reserve 3 for top border + bottom border + chin, plus 2 for shell context.
-    const max = Math.max(1, rows - 5);
-    return Math.min(this.configuredBoxLines, max);
+    if (rows === 0) return this.configuredBoxLines ?? FALLBACK_BOX_LINES;
+    // Reserve the 3 frame rows (two borders + chin) plus room for the shell
+    // prompt and the command line that launched us.
+    const available = Math.max(MIN_BOX_LINES, rows - 6);
+    return this.configuredBoxLines === null
+      ? available
+      : Math.min(this.configuredBoxLines, available);
   }
 
   /** Total lines this box occupies on screen (top + content + bottom + chin). */
@@ -51,21 +69,27 @@ export class BoxModel {
     return this.boxLines + 3;
   }
 
-  /** Commit `current` (if any), then push `text` as a committed line. */
+  /** Push `text` as a committed line. */
   addLine(text: string): void {
-    if (this.current !== null) this.commitCurrent();
     this.lines.push(text);
     this.appendToCache(text);
   }
 
-  /** Replace the in-progress line wholesale. */
+  /**
+   * Replace the in-progress preview row.
+   *
+   * `current` is a preview of a line the producer has not finished yet, and it
+   * is never committed here — the producer re-sends the finished line through
+   * `addLine` once it is complete. Committing it on the way past is how the
+   * same half-written reasoning line ends up stamped into the box repeatedly.
+   */
   updateCurrent(text: string): void {
     this.current = text;
   }
 
-  /** Commit the in-progress line to the committed list. */
-  finishCurrent(): void {
-    if (this.current !== null) this.commitCurrent();
+  /** Drop the preview row without committing it. */
+  clearCurrent(): void {
+    this.current = null;
   }
 
   /** Signal that subsequent content is assistant text output. */
@@ -88,25 +112,44 @@ export class BoxModel {
 
   /** Render + cursor control: overwrites the previous draw if there was one. */
   draw(cols: number): void {
-    let out = "";
-    if (this.drawn) out += `\x1b[${this.totalHeight}A`;
+    let out = HIDE_CURSOR;
+    // Rewind by what is on screen, not by what we are about to draw — the two
+    // differ whenever the terminal was resized since the last frame.
+    if (this.drawn) out += `\x1b[${this.drawnHeight}A\x1b[J`;
+    const height = this.totalHeight;
     out += this.render(cols);
     process.stdout.write(out);
     this.drawn = true;
+    this.drawnHeight = height;
   }
 
-  /** Erase the drawn box and print the last contiguous text block as plain text. */
-  flush(cols: number): void {
-    if (!this.drawn) return;
-    process.stdout.write(`\x1b[${this.totalHeight}A\x1b[J`);
-    this.ensureCache(cols);
-    const inner = cols - 4;
-    for (const line of this.lines.slice(this.lastTextStart)) {
-      for (const visual of wrapLine(line, inner)) {
-        process.stdout.write(`${visual}\n`);
+  /**
+   * Erase the box and restore the terminal modes `draw` turned off. This must
+   * run on every exit path — including Ctrl-C, which would otherwise hand the
+   * shell back with the cursor hidden and line wrapping disabled, and the next
+   * prompt drawn over the box.
+   *
+   * `keepTail` leaves the last contiguous text block behind as scrollback, for
+   * callers that print nothing after the box.
+   */
+  flush(cols: number, keepTail = false): void {
+    if (!this.drawn) {
+      process.stdout.write(`${ENABLE_WRAP}${SHOW_CURSOR}`);
+      return;
+    }
+    process.stdout.write(`\x1b[${this.drawnHeight}A\x1b[J`);
+    if (keepTail) {
+      this.ensureCache(cols);
+      const inner = cols - 4;
+      for (const line of this.lines.slice(this.lastTextStart)) {
+        for (const visual of wrapLine(line, inner)) {
+          process.stdout.write(`${visual}\n`);
+        }
       }
     }
+    process.stdout.write(`${ENABLE_WRAP}${SHOW_CURSOR}`);
     this.drawn = false;
+    this.drawnHeight = 0;
   }
 
   /** Stateless render: rebuild visual lines from the model and return the box. */
@@ -116,7 +159,7 @@ export class BoxModel {
     let out = "";
 
     // Disable line wrapping — the box does its own.
-    out += "\x1b[?7l";
+    out += DISABLE_WRAP;
 
     const titleText = ` ${this.title} `;
     const dashTotal = inner + 2 - titleText.length;
@@ -149,7 +192,7 @@ export class BoxModel {
     }
 
     // Re-enable line wrapping.
-    out += "\x1b[?7h";
+    out += ENABLE_WRAP;
     return out;
   }
 
@@ -168,15 +211,6 @@ export class BoxModel {
       (tag.style ?? ansi.dim)(tag.label),
     );
     return `  ${parts.join(separator)}`;
-  }
-
-  /** Move `current` into `lines` and append its wrapped output to the cache. */
-  private commitCurrent(): void {
-    if (this.current === null) return;
-    const text = this.current;
-    this.lines.push(text);
-    this.current = null;
-    this.appendToCache(text);
   }
 
   /** Wrap a single line and append it to the cache (if cols are known). */

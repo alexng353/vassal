@@ -1,11 +1,22 @@
 import { ansi } from "./ansi.ts";
 import { BoxModel } from "./box.ts";
+import { formatElapsed } from "./progress.ts";
 import type { LineKind, RenderedLine } from "./render.ts";
 import type { Status } from "./status.ts";
 
 const PREFIX_WIDTH = 8;
-const BOX_LINES = 14;
 const DEFAULT_COLS = 100;
+/** How often the box repaints on its own, so the runtime clock advances. */
+const TICK_MS = 1_000;
+
+export type SessionState = {
+  status: Status;
+  label: string;
+  cost: number;
+  tokens: { input: number; output: number } | null;
+  /** When the current turn started, for the runtime clock. */
+  startedAt: number;
+};
 
 /**
  * Where rendered session activity goes.
@@ -21,9 +32,14 @@ export type StreamSink = {
   /** The line currently being typed, or null to clear it. Sinks may ignore it. */
   typing(line: RenderedLine | null): void;
   /** Session state for any status furniture the sink keeps. */
-  state(state: { status: Status; label: string; cost: number }): void;
-  /** Tear down before the dispatch contract is printed. */
-  close(): void;
+  state(state: SessionState): void;
+  /**
+   * Tear down. `keepTail` asks for the recent output to survive as scrollback —
+   * for exits that print nothing afterwards. On a normal finish the dispatch
+   * contract follows and already carries the final text, so the default drops it
+   * rather than printing it twice.
+   */
+  close(options?: { keepTail?: boolean }): void;
 };
 
 /**
@@ -56,57 +72,96 @@ export class PlainSink implements StreamSink {
  * final assistant text is left behind as plain scrollback.
  */
 export class BoxSink implements StreamSink {
-  private box = new BoxModel(BOX_LINES);
-  private latest: { status: Status; label: string; cost: number } | null = null;
+  private box = new BoxModel();
+  private latest: SessionState | null = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private closed = false;
 
   constructor(title: string) {
     this.box.title = title;
   }
 
   line(line: RenderedLine): void {
-    if (line.kind === "text") this.box.markTextStart();
-    else this.box.markNonText();
-    this.box.addLine(decorate(line));
+    this.commit(line);
     this.draw();
   }
 
   lines(lines: Array<RenderedLine>): void {
-    for (const line of lines) {
-      if (line.kind === "text") this.box.markTextStart();
-      else this.box.markNonText();
-      this.box.addLine(decorate(line));
-    }
+    if (lines.length === 0) return;
+    for (const line of lines) this.commit(line);
     this.draw();
   }
 
   typing(line: RenderedLine | null): void {
-    if (line === null) {
-      this.box.finishCurrent();
-    } else {
-      this.box.updateCurrent(decorate(line));
-    }
+    if (line === null) this.box.clearCurrent();
+    else this.box.updateCurrent(decorate(line));
     this.draw();
   }
 
-  state(state: { status: Status; label: string; cost: number }): void {
+  state(state: SessionState): void {
     this.latest = state;
-    this.box.setChin([
+    this.startTicking();
+    this.paintChin();
+    this.draw();
+  }
+
+  close(options: { keepTail?: boolean } = {}): void {
+    if (this.closed) return;
+    this.closed = true;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.box.clearCurrent();
+    this.box.flush(columns(), options.keepTail ?? false);
+  }
+
+  private commit(line: RenderedLine): void {
+    if (line.kind === "text") this.box.markTextStart();
+    else this.box.markNonText();
+    // The preview row is superseded by whatever the renderer just finalized.
+    this.box.clearCurrent();
+    this.box.addLine(decorate(line));
+  }
+
+  /**
+   * Repaint on a timer so the runtime clock advances while the session is quiet.
+   * Unref'd — a ticking box must never be the reason the process stays alive.
+   */
+  private startTicking(): void {
+    if (this.timer || this.closed) return;
+    this.timer = setInterval(() => {
+      this.paintChin();
+      this.draw();
+    }, TICK_MS);
+    this.timer.unref?.();
+  }
+
+  private paintChin(): void {
+    const state = this.latest;
+    if (!state) return;
+    const tags = [
       { label: state.label, style: ansi.cyan },
       { label: state.status, style: statusStyle(state.status) },
+      { label: formatElapsed(Date.now() - state.startedAt) },
       { label: `$${state.cost.toFixed(4)}` },
-    ]);
-    this.draw();
-  }
-
-  close(): void {
-    this.box.finishCurrent();
-    if (this.latest) this.state(this.latest);
-    this.box.flush(columns());
+    ];
+    if (state.tokens) {
+      tags.push({
+        label: `${compactCount(state.tokens.input)}↑ ${compactCount(state.tokens.output)}↓`,
+      });
+    }
+    this.box.setChin(tags);
   }
 
   private draw(): void {
+    if (this.closed) return;
     this.box.draw(columns());
   }
+}
+
+function compactCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
 function decorate(line: RenderedLine): string {

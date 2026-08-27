@@ -33,6 +33,58 @@ const IDLE_RECHECK_MS = 5_000;
 
 export type StreamOptions = { human?: boolean };
 
+type Usage = { input: number; output: number; cost: number };
+
+/**
+ * Running totals for the status box, accumulated over the whole session.
+ *
+ * Cost and tokens are reported per assistant *message*, and a turn is many
+ * messages — one per step — each starting at zero and climbing as it streams.
+ * Keeping the newest message's numbers makes the counters reset on every tool
+ * call, so track the latest figures per message id and sum them: an in-flight
+ * message updates its own entry instead of double-counting.
+ *
+ * `startedAt` follows the newest *user* message. Anchoring it to an assistant
+ * message would restart the clock at every step.
+ */
+export class SessionStats {
+  private byMessage = new Map<string, Usage>();
+  startedAt: number;
+
+  constructor(startedAt: number) {
+    this.startedAt = startedAt;
+  }
+
+  observe(info: SessionMessage["info"]): void {
+    const timed = info as { id?: string; time?: { created?: number } };
+    if (info.role === "user") {
+      this.startedAt = timed.time?.created ?? this.startedAt;
+      return;
+    }
+    if (info.role !== "assistant" || !timed.id) return;
+
+    const usage = info as {
+      cost?: number;
+      tokens?: { input?: number; output?: number };
+    };
+    this.byMessage.set(timed.id, {
+      input: usage.tokens?.input ?? 0,
+      output: usage.tokens?.output ?? 0,
+      cost: usage.cost ?? 0,
+    });
+  }
+
+  totals(): Usage {
+    const total: Usage = { input: 0, output: 0, cost: 0 };
+    for (const usage of this.byMessage.values()) {
+      total.input += usage.input;
+      total.output += usage.output;
+      total.cost += usage.cost;
+    }
+    return total;
+  }
+}
+
 export async function runStream(
   input: string,
   options: StreamOptions = {},
@@ -57,11 +109,39 @@ export async function runStream(
   const abort = new AbortController();
   const events = subscribeEvents(daemon.url, abort.signal);
 
+  // Leaving the terminal with a half-drawn box, a hidden cursor and wrapping
+  // disabled is what eats the next shell prompt, so tear the box down on every
+  // exit path — Ctrl-C included.
+  // An interrupted stream prints no contract afterwards, so keep the tail —
+  // it is the only record of what the session had done.
+  const interrupted = (code: number) => () => {
+    sink.close({ keepTail: true });
+    process.exit(code);
+  };
+  process.once("SIGINT", interrupted(130));
+  process.once("SIGTERM", interrupted(143));
+
   const messages = await listSessionMessages(client, meta.id);
   sink.lines(backfill(messages, renderer));
 
+  const stats = new SessionStats(meta.createdAt);
+  for (const message of messages) stats.observe(message.info);
+
   let status = await currentStatus(meta, client, daemon.url);
-  sink.state({ status, label: displayId(meta), cost: meta.cost });
+  const paint = () => {
+    const totals = stats.totals();
+    sink.state({
+      status,
+      label: displayId(meta),
+      cost: totals.cost || meta.cost,
+      tokens:
+        totals.input || totals.output
+          ? { input: totals.input, output: totals.output }
+          : null,
+      startedAt: stats.startedAt,
+    });
+  };
+  paint();
 
   let reportedQuestion: string | null = null;
   // Announce a question the moment we know about one — including a session that
@@ -84,13 +164,18 @@ export async function runStream(
         if (event) {
           sink.lines(renderEvent(event, renderer));
           sink.typing(renderer.pending());
+          const info = messageInfo(event);
+          if (info) {
+            stats.observe(info);
+            paint();
+          }
           if (!isTerminalSignal(event)) continue;
         }
 
         const refreshed = await getSession(meta.id);
         if (refreshed) meta = refreshed;
         status = await currentStatus(meta, client, daemon.url);
-        sink.state({ status, label: displayId(meta), cost: meta.cost });
+        paint();
 
         await reportQuestion();
         if (TERMINAL.has(status)) break;
@@ -153,6 +238,13 @@ function renderEvent(
   if (event.type !== "message.part.updated") return [];
   const part = event.properties.part as Part | undefined;
   return part ? renderer.render(part) : [];
+}
+
+/** The message header on a `message.updated` event, which carries cost/tokens. */
+function messageInfo(event: DaemonEvent): SessionMessage["info"] | null {
+  if (event.type !== "message.updated") return null;
+  const info = event.properties.info as SessionMessage["info"] | undefined;
+  return info ?? null;
 }
 
 /**
