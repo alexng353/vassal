@@ -117,7 +117,11 @@ export async function runStream(
   // connection opens, so opening it second would drop everything that landed
   // while we were fetching history.
   const abort = new AbortController();
-  const events = subscribeEvents(daemon.url, abort.signal);
+  const events = subscribeEvents(
+    daemon.url,
+    sessionDirectory(meta),
+    abort.signal,
+  );
 
   // Ctrl-C leaves nothing behind: the box is erased and the terminal modes it
   // changed are restored, so the shell gets its screen back untouched. The
@@ -131,6 +135,16 @@ export async function runStream(
 
   const messages = await listSessionMessages(client, meta.id);
   sink.lines(backfill(messages, renderer));
+
+  // Which side of the conversation each message is, so the event path can drop
+  // the parts of a user turn. Backfill filters on role, but an event carries
+  // only a part and its message id — without this the prompt the orchestrator
+  // just sent is rendered back as though the agent had written it.
+  const roles = new Map<string, string>();
+  for (const message of messages) {
+    const info = message.info as { id?: string; role?: string };
+    if (info.id && info.role) roles.set(info.id, info.role);
+  }
 
   const stats = new SessionStats(meta.createdAt);
   for (const message of messages) stats.observe(message.info);
@@ -172,9 +186,17 @@ export async function runStream(
         if (event && eventSessionId(event) !== meta.id) continue;
 
         if (event) {
-          sink.lines(renderEvent(event, renderer));
-          sink.typing(renderer.pending());
           const info = messageInfo(event);
+          // Record the role before rendering: the `message.updated` for a turn
+          // arrives ahead of its parts, which is what makes the filter work.
+          if (info) {
+            const identified = info as { id?: string; role?: string };
+            if (identified.id && identified.role) {
+              roles.set(identified.id, identified.role);
+            }
+          }
+          sink.lines(renderEvent(event, renderer, roles));
+          sink.typing(renderer.pending());
           if (info) {
             stats.observe(info);
             paint();
@@ -247,13 +269,38 @@ function backfill(
   ];
 }
 
-function renderEvent(
+export function renderEvent(
   event: DaemonEvent,
   renderer: PartRenderer,
+  roles: Map<string, string>,
 ): Array<RenderedLine> {
-  if (event.type !== "message.part.updated") return [];
-  const part = event.properties.part as Part | undefined;
-  return part ? renderer.render(part) : [];
+  if (event.type === "message.part.updated") {
+    const part = event.properties.part as Part | undefined;
+    if (!part || isUserTurn(part.messageID, roles)) return [];
+    return renderer.render(part);
+  }
+  // Token-level text. The snapshot events only bracket a part (announced empty,
+  // re-sent complete), so this is what makes the stream a stream.
+  if (event.type === "message.part.delta") {
+    const { partID, field, delta, messageID } = event.properties as {
+      partID?: string;
+      field?: string;
+      delta?: string;
+      messageID?: string;
+    };
+    if (!partID || !field || typeof delta !== "string") return [];
+    if (isUserTurn(messageID, roles)) return [];
+    return renderer.delta(partID, field, delta);
+  }
+  return [];
+}
+
+/** True only when the message is known to be the user's; unknown means show it. */
+function isUserTurn(
+  messageId: string | undefined,
+  roles: Map<string, string>,
+): boolean {
+  return messageId !== undefined && roles.get(messageId) === "user";
 }
 
 /** The message header on a `message.updated` event, which carries cost/tokens. */

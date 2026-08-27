@@ -30,6 +30,8 @@ export class PartRenderer {
   private emittedTool = new Set<string>();
   private pendingByPart = new Map<string, { kind: LineKind; text: string }>();
   private lastPendingId: string | null = null;
+  /** Text accumulated per part, so token deltas can be rendered as they land. */
+  private textByPart = new Map<string, { kind: LineKind; text: string }>();
 
   /** Lines that are new since this part was last rendered. */
   render(part: Part): Array<RenderedLine> {
@@ -39,6 +41,27 @@ export class PartRenderer {
     }
     if (part.type === "tool") return this.tool(part);
     return [];
+  }
+
+  /**
+   * Apply a `message.part.delta` — one token's worth of text for a part already
+   * announced by a `message.part.updated`.
+   *
+   * This is where live output actually comes from. The daemon announces a text
+   * or reasoning part empty, streams it as deltas, and only sends the filled-in
+   * part once the whole thing is written, so a renderer fed on snapshots alone
+   * shows an entire turn arriving in one lump at the end of it.
+   *
+   * A delta for a part we never saw announced is dropped: without its type
+   * there is no way to know whether it is prose or a tool's input, and the
+   * snapshot that eventually lands will carry the text anyway.
+   */
+  delta(partId: string, field: string, delta: string): Array<RenderedLine> {
+    if (field !== "text" || !delta) return [];
+    const held = this.textByPart.get(partId);
+    if (!held) return [];
+    held.text += delta;
+    return this.prose(held.kind, partId, held.text);
   }
 
   /**
@@ -70,7 +93,19 @@ export class PartRenderer {
     return lines;
   }
 
-  private prose(kind: LineKind, id: string, full: string): Array<RenderedLine> {
+  private prose(
+    kind: LineKind,
+    id: string,
+    incoming: string,
+  ): Array<RenderedLine> {
+    // Snapshots and deltas race: a `message.part.updated` can arrive carrying
+    // less than the deltas have already appended. Keep whichever is longer, so
+    // a stale snapshot never rewinds the part or re-emits what it already has.
+    const held = this.textByPart.get(id);
+    const full =
+      held && held.text.length > incoming.length ? held.text : incoming;
+    this.textByPart.set(id, { kind, text: full });
+
     const already = this.emittedChars.get(id) ?? 0;
     if (full.length <= already) return [];
 

@@ -77,6 +77,57 @@ describe("PartRenderer", () => {
     expect(renderer.render(part)[0]?.kind).toBe("think");
   });
 
+  test("deltas stream a part the daemon announced empty", () => {
+    // The shape opencode actually sends: the part arrives empty, the text comes
+    // as token deltas, and the filled-in snapshot only lands at the end.
+    const renderer = new PartRenderer();
+    expect(renderer.render(textPart("p1", ""))).toEqual([]);
+    expect(renderer.delta("p1", "text", "one\n").map((l) => l.text)).toEqual([
+      "one",
+    ]);
+    expect(renderer.delta("p1", "text", "two")).toEqual([]);
+    expect(renderer.pending()?.text).toBe("two");
+    expect(renderer.delta("p1", "text", "\n").map((l) => l.text)).toEqual([
+      "two",
+    ]);
+
+    // The closing snapshot repeats everything the deltas already showed.
+    expect(renderer.render(textPart("p1", "one\ntwo\n"))).toEqual([]);
+  });
+
+  test("a snapshot behind the deltas does not rewind the part", () => {
+    const renderer = new PartRenderer();
+    renderer.render(textPart("p1", ""));
+    renderer.delta("p1", "text", "ahead of the snapshot\n");
+    expect(renderer.render(textPart("p1", "ahead"))).toEqual([]);
+    expect(renderer.delta("p1", "text", "more\n").map((l) => l.text)).toEqual([
+      "more",
+    ]);
+  });
+
+  test("deltas for an unannounced part or another field are ignored", () => {
+    const renderer = new PartRenderer();
+    expect(renderer.delta("unknown", "text", "orphan\n")).toEqual([]);
+    renderer.render(textPart("p1", ""));
+    expect(renderer.delta("p1", "input", '{"path":"x"}\n')).toEqual([]);
+  });
+
+  test("a reasoning part keeps its kind across deltas", () => {
+    const renderer = new PartRenderer();
+    const part = {
+      id: "p1",
+      sessionID: "ses_x",
+      messageID: "msg_x",
+      type: "reasoning",
+      text: "",
+      time: { start: 0 },
+    } as unknown as Part;
+    renderer.render(part);
+    expect(renderer.delta("p1", "text", "weighing options\n")[0]?.kind).toBe(
+      "think",
+    );
+  });
+
   test("a tool prints once per status, not once per update", () => {
     const renderer = new PartRenderer();
     const running = renderer.render(toolPart("t1", "read", "running"));

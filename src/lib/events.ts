@@ -1,6 +1,8 @@
+import { withDirectory } from "./opencode.ts";
+
 /**
- * The daemon's global SSE feed (`GET /event`). It carries every session's
- * activity, tagged with `sessionID` — there is no usable per-session stream
+ * The daemon's SSE feed (`GET /event`). It carries every session's activity in
+ * one project, tagged with `sessionID` — there is no usable per-session stream
  * (`/api/session/:id/event` accepts the connection and never responds), so
  * subscribers filter client-side.
  */
@@ -18,15 +20,27 @@ export function eventSessionId(event: DaemonEvent): string | null {
  * Yield events as they arrive. The connection stays open until the caller stops
  * iterating (`break`/`return`) or `signal` aborts, at which point the response
  * body is released.
+ *
+ * `directory` is not optional in practice, for the same reason pending
+ * questions need one: the feed is scoped to a project, and a subscription
+ * without the param gets the daemon's own startup directory. Since every
+ * dispatch runs in a worktree or an explicit `--cwd`, omitting it delivers
+ * `server.connected` and heartbeats and nothing else — the session's whole turn
+ * happens on a feed nobody is listening to, and `stream` sits there showing its
+ * backfill until the session goes idle.
  */
 export async function* subscribeEvents(
   daemonUrl: string,
+  directory: string,
   signal?: AbortSignal,
 ): AsyncGenerator<DaemonEvent> {
-  const res = await fetch(new URL("/event", daemonUrl), {
-    headers: { accept: "text/event-stream" },
-    signal,
-  });
+  const res = await fetch(
+    new URL(withDirectory("/event", directory), daemonUrl),
+    {
+      headers: { accept: "text/event-stream" },
+      signal,
+    },
+  );
   if (!res.ok || !res.body) {
     throw new Error(`opencode /event failed: ${res.status} ${res.statusText}`);
   }

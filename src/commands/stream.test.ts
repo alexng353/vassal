@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionMessage } from "../lib/opencode.ts";
-import { SessionStats } from "./stream.ts";
+import { PartRenderer } from "../lib/render.ts";
+import { renderEvent, SessionStats } from "./stream.ts";
 
 function assistant(
   id: string,
@@ -70,5 +71,72 @@ describe("SessionStats", () => {
       output: 0,
       cost: 0,
     });
+  });
+
+  test("the model follows the newest assistant message", () => {
+    const stats = new SessionStats(0);
+    expect(stats.model).toBeNull();
+    stats.observe({
+      ...assistant("m1", 10, 1),
+      providerID: "openai",
+      modelID: "gpt-5.6-sol",
+    } as unknown as SessionMessage["info"]);
+    expect(stats.model).toBe("openai/gpt-5.6-sol");
+  });
+});
+
+describe("renderEvent", () => {
+  const partUpdated = (messageID: string, id: string, text: string) => ({
+    type: "message.part.updated",
+    properties: {
+      sessionID: "ses_x",
+      part: { id, messageID, sessionID: "ses_x", type: "text", text },
+    },
+  });
+
+  const partDelta = (messageID: string, partID: string, delta: string) => ({
+    type: "message.part.delta",
+    properties: { sessionID: "ses_x", messageID, partID, field: "text", delta },
+  });
+
+  test("renders the assistant's parts and its deltas", () => {
+    const renderer = new PartRenderer();
+    const roles = new Map([["msg_a", "assistant"]]);
+    expect(
+      renderEvent(partUpdated("msg_a", "p1", ""), renderer, roles),
+    ).toEqual([]);
+    expect(
+      renderEvent(partDelta("msg_a", "p1", "streamed\n"), renderer, roles).map(
+        (l) => l.text,
+      ),
+    ).toEqual(["streamed"]);
+  });
+
+  test("drops the user's own turn", () => {
+    // The daemon publishes the prompt as a part like any other; rendering it
+    // prints the orchestrator's brief back as though the agent wrote it.
+    const renderer = new PartRenderer();
+    const roles = new Map([["msg_u", "user"]]);
+    expect(
+      renderEvent(
+        partUpdated("msg_u", "p1", "do the thing\n"),
+        renderer,
+        roles,
+      ),
+    ).toEqual([]);
+    expect(
+      renderEvent(partDelta("msg_u", "p1", "more prompt\n"), renderer, roles),
+    ).toEqual([]);
+  });
+
+  test("shows a part whose message role is not known yet", () => {
+    const renderer = new PartRenderer();
+    expect(
+      renderEvent(
+        partUpdated("msg_?", "p1", "text\n"),
+        renderer,
+        new Map(),
+      ).map((l) => l.text),
+    ).toEqual(["text"]);
   });
 });

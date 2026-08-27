@@ -2,10 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { type DaemonEvent, eventSessionId, subscribeEvents } from "./events.ts";
 
 /** Serve a fixed set of SSE chunks so frame splitting can be tested directly. */
-function serve(chunks: Array<string>): { url: string; stop: () => void } {
+function serve(chunks: Array<string>): {
+  url: string;
+  stop: () => void;
+  requested: Array<string>;
+} {
+  const requested: Array<string> = [];
   const server = Bun.serve({
     port: 0,
-    fetch() {
+    fetch(request) {
+      requested.push(new URL(request.url).search);
       const stream = new ReadableStream({
         start(controller) {
           const encoder = new TextEncoder();
@@ -18,12 +24,14 @@ function serve(chunks: Array<string>): { url: string; stop: () => void } {
       });
     },
   });
-  return { url: server.url.origin, stop: () => server.stop(true) };
+  return { url: server.url.origin, stop: () => server.stop(true), requested };
 }
 
 async function collect(url: string): Promise<Array<DaemonEvent>> {
   const events: Array<DaemonEvent> = [];
-  for await (const event of subscribeEvents(url)) events.push(event);
+  for await (const event of subscribeEvents(url, "/work/tree")) {
+    events.push(event);
+  }
   return events;
 }
 
@@ -70,6 +78,21 @@ describe("subscribeEvents", () => {
     try {
       const events = await collect(url);
       expect(events.map((e) => e.type)).toEqual(["session.idle"]);
+    } finally {
+      stop();
+    }
+  });
+
+  test("scopes the subscription to the session's directory", async () => {
+    // Without the param the daemon serves the feed for its own startup
+    // directory, where no dispatch ever runs: the subscription succeeds and
+    // then carries nothing but heartbeats.
+    const { url, stop, requested } = serve([
+      'data: {"type":"session.idle","properties":{"sessionID":"ses_a"}}\n\n',
+    ]);
+    try {
+      await collect(url);
+      expect(requested).toEqual(["?directory=%2Fwork%2Ftree"]);
     } finally {
       stop();
     }

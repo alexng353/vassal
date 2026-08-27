@@ -8,6 +8,12 @@ const PREFIX_WIDTH = 8;
 const DEFAULT_COLS = 100;
 /** How often the box repaints on its own, so the runtime clock advances. */
 const TICK_MS = 1_000;
+/**
+ * Shortest gap between frames. Text arrives one token at a time and every frame
+ * is a full repaint of the window, so painting on each one would push megabytes
+ * at the terminal for a single turn and lag behind the session it is showing.
+ */
+const MIN_FRAME_MS = 40;
 
 export type SessionState = {
   status: Status;
@@ -72,6 +78,8 @@ export class BoxSink implements StreamSink {
   private box = new BoxModel();
   private latest: SessionState | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private frameTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastFrameAt = 0;
   private closed = false;
   private onResize: (() => void) | null = null;
 
@@ -112,6 +120,10 @@ export class BoxSink implements StreamSink {
     this.closed = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    // A queued frame firing after teardown would paint the box back onto the
+    // screen the stream just handed to the shell.
+    if (this.frameTimer) clearTimeout(this.frameTimer);
+    this.frameTimer = null;
     if (this.onResize) process.stdout.off("resize", this.onResize);
     this.onResize = null;
     this.box.clearCurrent();
@@ -157,8 +169,28 @@ export class BoxSink implements StreamSink {
     this.box.setChin(tags);
   }
 
+  /**
+   * Paint, or schedule a paint if one just happened. Coalescing keeps a burst
+   * of token deltas to one frame per `MIN_FRAME_MS`; the trailing timer is what
+   * guarantees the last delta of a burst still reaches the screen.
+   */
   private draw(): void {
     if (this.closed) return;
+    const since = Date.now() - this.lastFrameAt;
+    if (since >= MIN_FRAME_MS) {
+      this.paint();
+      return;
+    }
+    if (this.frameTimer) return;
+    this.frameTimer = setTimeout(() => {
+      this.frameTimer = null;
+      if (!this.closed) this.paint();
+    }, MIN_FRAME_MS - since);
+    this.frameTimer.unref?.();
+  }
+
+  private paint(): void {
+    this.lastFrameAt = Date.now();
     this.box.draw(columns());
   }
 }
