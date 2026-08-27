@@ -23,21 +23,30 @@ export async function runList(options: { maxAgeMs: number }): Promise<number> {
 
   const now = Date.now();
   const cutoff = now - options.maxAgeMs;
-  const daemonClient = await makeClientForLiveSessions(entries);
+  // Deriving a status costs a daemon round trip, so only spend it on sessions
+  // that could actually show up. A session past the age cutoff is printed only
+  // if it turns out to be running, and one vassal recorded as finished isn't —
+  // a resume goes through dispatch, which refreshes lastActivityAt. Without
+  // this, `--max-age 1h` still probed every session on disk, which crawls
+  // whenever the daemon is busy with a live turn.
+  const candidates = entries.filter(
+    (meta) => meta.lastActivityAt >= cutoff || !hasTerminalState(meta),
+  );
+  const daemonClient = await makeClientForLiveSessions(candidates);
   const pendingQuestions = daemonClient
     ? await listPendingQuestionsForStatus(daemonClient.daemonUrl)
     : [];
-  const entriesWithStatus = await Promise.all(
-    entries.map(async (meta) => ({
+  const candidatesWithStatus = await Promise.all(
+    candidates.map(async (meta) => ({
       meta,
       status: await deriveStatus(meta, daemonClient?.client, pendingQuestions),
       missing: worktreeMissing(meta),
     })),
   );
-  const visible = entriesWithStatus.filter(
+  const visible = candidatesWithStatus.filter(
     ({ meta, status }) => meta.lastActivityAt >= cutoff || status === "running",
   );
-  const hiddenCount = entriesWithStatus.length - visible.length;
+  const hiddenCount = entries.length - visible.length;
 
   if (visible.length === 0) {
     console.log("(no sessions)");
