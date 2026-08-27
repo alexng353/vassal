@@ -2,6 +2,12 @@ import { ansi, splitAtWidth, stripAnsi, wrapLine } from "./ansi.ts";
 
 export type ChinTag = { label: string; style?: (s: string) => string };
 
+function countRows(frame: string): number {
+  let rows = 0;
+  for (const char of frame) if (char === "\n") rows++;
+  return rows;
+}
+
 const MIN_BOX_LINES = 4;
 /** Used when the terminal reports no height (piped output, no TTY). */
 const FALLBACK_BOX_LINES = 14;
@@ -116,11 +122,13 @@ export class BoxModel {
     // Rewind by what is on screen, not by what we are about to draw — the two
     // differ whenever the terminal was resized since the last frame.
     if (this.drawn) out += `\x1b[${this.drawnHeight}A\x1b[J`;
-    const height = this.totalHeight;
-    out += this.render(cols);
-    process.stdout.write(out);
+    const frame = this.render(cols);
+    process.stdout.write(out + frame);
     this.drawn = true;
-    this.drawnHeight = height;
+    // Count the rows actually emitted rather than trusting a computed height.
+    // Rewinding one row too many overwrites whatever sits above the box — the
+    // command line that started us, or the shell prompt.
+    this.drawnHeight = countRows(frame);
   }
 
   /**
@@ -182,14 +190,14 @@ export class BoxModel {
 
     out += `${ansi.dim(`└${"─".repeat(inner + 2)}┘`)}\n`;
 
-    if (this.chinTags.length > 0) {
-      const chin = this.renderChin();
-      const chinVisible = stripAnsi(chin).length;
-      out +=
-        chinVisible < inner + 4
-          ? `${chin}${" ".repeat(inner + 4 - chinVisible)}\n`
-          : `${chin}\n`;
-    }
+    // Always emit the chin row, blank if there are no tags yet. A frame whose
+    // height changes when the first tag lands would leave a stale row behind.
+    const chin = this.chinTags.length > 0 ? this.renderChin() : "";
+    const chinVisible = stripAnsi(chin).length;
+    out +=
+      chinVisible < inner + 4
+        ? `${chin}${" ".repeat(inner + 4 - chinVisible)}\n`
+        : `${chin}\n`;
 
     // Re-enable line wrapping.
     out += ENABLE_WRAP;

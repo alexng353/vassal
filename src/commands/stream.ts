@@ -112,10 +112,11 @@ export async function runStream(
   // Leaving the terminal with a half-drawn box, a hidden cursor and wrapping
   // disabled is what eats the next shell prompt, so tear the box down on every
   // exit path — Ctrl-C included.
-  // An interrupted stream prints no contract afterwards, so keep the tail —
-  // it is the only record of what the session had done.
+  // Ctrl-C leaves nothing behind: the box is erased and the shell gets its
+  // screen back untouched. The session keeps running either way, so there is
+  // nothing here worth pasting into the scrollback.
   const interrupted = (code: number) => () => {
-    sink.close({ keepTail: true });
+    sink.close();
     process.exit(code);
   };
   process.once("SIGINT", interrupted(130));

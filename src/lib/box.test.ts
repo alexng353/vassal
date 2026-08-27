@@ -51,6 +51,28 @@ describe("BoxModel", () => {
     expect(new BoxModel(5).totalHeight).toBe(8);
   });
 
+  test("a frame is exactly totalHeight rows, chin or no chin", () => {
+    const box = new BoxModel(6);
+    const rows = (s: string) => s.split("\n").length - 1;
+
+    // The first frame is drawn before any chin tag is set. If it were shorter
+    // than totalHeight, the next draw would rewind too far and overwrite the
+    // line above the box — the command that launched the stream.
+    expect(rows(box.render(COLS))).toBe(box.totalHeight);
+
+    box.setChin([{ label: "ses_x" }, { label: "running" }]);
+    expect(rows(box.render(COLS))).toBe(box.totalHeight);
+  });
+
+  test("frame height is stable as content grows", () => {
+    const box = new BoxModel(4);
+    const rows = (s: string) => s.split("\n").length - 1;
+    const empty = rows(box.render(COLS));
+    for (let i = 0; i < 20; i++) box.addLine(`line ${i}`);
+    box.updateCurrent("in progress");
+    expect(rows(box.render(COLS))).toBe(empty);
+  });
+
   test("the chin renders below the frame", () => {
     const box = new BoxModel(2);
     box.setChin([{ label: "ses_x" }, { label: "running" }]);
