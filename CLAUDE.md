@@ -84,6 +84,8 @@ This contract is what makes vassal usable from a parent agent. Do not change lin
 
 `attach` and `stream` end with the dispatch contract. `stream` precedes it with line-prefixed activity (`[text]`/`[think]`/`[tool]`/`[ask]`/`[meta]`) — append-only and safe to pipe. `-H`/`--human` swaps that half for a status box on the **alternate screen**; it takes over the terminal, so it must stay opt-in and must never become the default. The box is always painted from the home position — never by rewinding the cursor over the previous frame. A rewind depends on the recorded frame height still describing what is on screen, which a resize invalidates (the terminal reflows it), and every variant of that scheme has failed here: eaten shell prompts, a stray `┌` surviving teardown, frames stacking after a workspace switch. Keep the box absolute, and keep every row clipped to the terminal width so nothing can wrap into an extra row.
 
+Under `-H` only, the final assistant text is piped through `mdr` once the alternate screen is gone (`src/lib/markdown.ts`). The header above `---` stays literal — same contract, same prefixes — and every failure path (no `mdr`, non-zero exit, a renderer that hangs) prints the raw text instead. Plain `stream` never renders: its reader is a parser, and ANSI in the body would corrupt it.
+
 ## The daemon's API is directory-scoped
 
 Every project-scoped endpoint takes a `directory` query param and silently falls back to the daemon's own startup directory without one. It has bitten this codebase twice, in the same shape both times: the request succeeds, returns something plausible, and describes a project no vassal session runs in.

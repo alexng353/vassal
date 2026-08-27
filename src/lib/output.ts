@@ -15,7 +15,12 @@ export function formatCost(
   return cost ? `$${cost.toFixed(digits)}` : "-";
 }
 
-export function formatDispatchResult(r: DispatchResult): string {
+/**
+ * Everything above the final text, separator included. Split out so a human
+ * stream can print the header verbatim and pass only the body through a
+ * markdown renderer.
+ */
+export function formatDispatchHeader(r: DispatchResult): string {
   const lines = [
     `SESSION ${r.alias ?? r.sessionId}`,
     r.worktree ? `WORKTREE ${r.worktree}` : "WORKTREE -",
@@ -23,9 +28,12 @@ export function formatDispatchResult(r: DispatchResult): string {
     `COST ${formatCost(r.cost)}`,
     `EXIT ${r.exitCode}`,
     "---",
-    r.finalText,
   ];
   return lines.join("\n");
+}
+
+export function formatDispatchResult(r: DispatchResult): string {
+  return `${formatDispatchHeader(r)}\n${r.finalText}`;
 }
 
 export function formatDispatchHandle(

@@ -7,6 +7,7 @@ import {
   subscribeEvents,
 } from "../lib/events.ts";
 import { exitAfterFlush } from "../lib/exit.ts";
+import { renderMarkdown } from "../lib/markdown.ts";
 import { formatModelLabel, resolveSessionModel } from "../lib/model.ts";
 import {
   listPendingQuestions,
@@ -17,7 +18,7 @@ import {
   type PendingQuestion,
   type SessionMessage,
 } from "../lib/opencode.ts";
-import { formatDispatchResult } from "../lib/output.ts";
+import { formatDispatchHeader, formatDispatchResult } from "../lib/output.ts";
 import { PartRenderer, type RenderedLine } from "../lib/render.ts";
 import { BoxSink, PlainSink, type StreamSink } from "../lib/sink.ts";
 import { getSession } from "../lib/state.ts";
@@ -229,18 +230,27 @@ export async function runStream(
     meta,
     modelFromMessages(final) ?? stats.model,
   );
-  console.log(
-    formatDispatchResult({
-      sessionId: meta.id,
-      alias: meta.alias ?? null,
-      worktree: meta.worktree,
-      finalText: lastAssistant ? finalText(lastAssistant.parts) : "",
-      cost: assistantCost(lastAssistant) ?? meta.cost ?? null,
-      exitCode,
-      model,
-      effort,
-    }),
-  );
+  const result = {
+    sessionId: meta.id,
+    alias: meta.alias ?? null,
+    worktree: meta.worktree,
+    finalText: lastAssistant ? finalText(lastAssistant.parts) : "",
+    cost: assistantCost(lastAssistant) ?? meta.cost ?? null,
+    exitCode,
+    model,
+    effort,
+  };
+
+  if (options.human) {
+    // The box is gone by now, so this is what the human is left with. The
+    // header stays literal — it is the same contract either way — and only the
+    // agent's own summary is rendered, since that is the half written as
+    // markdown. Plain streams never render: their reader is a parser.
+    console.log(formatDispatchHeader(result));
+    console.log(await renderMarkdown(result.finalText));
+  } else {
+    console.log(formatDispatchResult(result));
+  }
   return exitCode;
 }
 
