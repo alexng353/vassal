@@ -33,13 +33,8 @@ export type StreamSink = {
   typing(line: RenderedLine | null): void;
   /** Session state for any status furniture the sink keeps. */
   state(state: SessionState): void;
-  /**
-   * Tear down. `keepTail` asks for the recent output to survive as scrollback —
-   * for exits that print nothing afterwards. On a normal finish the dispatch
-   * contract follows and already carries the final text, so the default drops it
-   * rather than printing it twice.
-   */
-  close(options?: { keepTail?: boolean }): void;
+  /** Tear down, restoring anything the sink changed about the terminal. */
+  close(): void;
 };
 
 /**
@@ -76,9 +71,14 @@ export class BoxSink implements StreamSink {
   private latest: SessionState | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private closed = false;
+  private onResize: (() => void) | null = null;
 
   constructor(title: string) {
     this.box.title = title;
+    // A resize changes every row's width and the number of rows that fit, so
+    // repaint rather than leaving a frame built for the old geometry.
+    this.onResize = () => this.draw();
+    process.stdout.on("resize", this.onResize);
   }
 
   line(line: RenderedLine): void {
@@ -105,18 +105,18 @@ export class BoxSink implements StreamSink {
     this.draw();
   }
 
-  close(options: { keepTail?: boolean } = {}): void {
+  close(): void {
     if (this.closed) return;
     this.closed = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.onResize) process.stdout.off("resize", this.onResize);
+    this.onResize = null;
     this.box.clearCurrent();
-    this.box.flush(columns(), options.keepTail ?? false);
+    this.box.flush();
   }
 
   private commit(line: RenderedLine): void {
-    if (line.kind === "text") this.box.markTextStart();
-    else this.box.markNonText();
     // The preview row is superseded by whatever the renderer just finalized.
     this.box.clearCurrent();
     this.box.addLine(decorate(line));

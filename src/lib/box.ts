@@ -11,12 +11,6 @@ function fitTitle(title: string, width: number): string {
     : ` ${title.slice(0, width - 3)}… `;
 }
 
-function countRows(frame: string): number {
-  let rows = 0;
-  for (const char of frame) if (char === "\n") rows++;
-  return rows;
-}
-
 const MIN_BOX_LINES = 4;
 /** Used when the terminal reports no height (piped output, no TTY). */
 const FALLBACK_BOX_LINES = 14;
@@ -24,6 +18,10 @@ const HIDE_CURSOR = "\x1b[?25l";
 const SHOW_CURSOR = "\x1b[?25h";
 const DISABLE_WRAP = "\x1b[?7l";
 const ENABLE_WRAP = "\x1b[?7h";
+const ENTER_ALT_SCREEN = "\x1b[?1049h";
+const LEAVE_ALT_SCREEN = "\x1b[?1049l";
+const CURSOR_HOME = "\x1b[H";
+const CLEAR_BELOW = "\x1b[J";
 
 /**
  * Fixed-height scrolling status box, ported from chad (`src/box.ts`).
@@ -44,23 +42,12 @@ export class BoxModel {
   chinTags: Array<ChinTag> = [];
 
   private configuredBoxLines: number | null;
-  private drawn = false;
-  /**
-   * Height of the frame actually on screen. The cursor has to move back up by
-   * exactly what was drawn — recomputing from the current terminal size would
-   * desync the moment the window is resized between frames.
-   */
-  private drawnHeight = 0;
+  private entered = false;
 
   /** Cached wrapped visual lines for committed content. */
   private wrappedCache: Array<string> = [];
   /** The column width the cache was built at. */
   private cachedCols = 0;
-
-  /** Index into `lines` where the last contiguous text block starts. */
-  private lastTextStart = 0;
-  /** Whether the most recent content was assistant text (vs tool/metadata). */
-  private inText = false;
 
   /** `boxLines: null` sizes the box to the terminal on every draw. */
   constructor(boxLines: number | null = null) {
@@ -71,9 +58,10 @@ export class BoxModel {
   private get boxLines(): number {
     const rows = process.stdout.rows || 0;
     if (rows === 0) return this.configuredBoxLines ?? FALLBACK_BOX_LINES;
-    // Reserve the 3 frame rows (two borders + chin) plus room for the shell
-    // prompt and the command line that launched us.
-    const available = Math.max(MIN_BOX_LINES, rows - 6);
+    // The box owns the alternate screen, so it can use the full height: the 3
+    // frame rows (two borders + chin), plus one row of slack so the newline
+    // ending the last row does not scroll the screen and shift the frame up.
+    const available = Math.max(MIN_BOX_LINES, rows - 4);
     return this.configuredBoxLines === null
       ? available
       : Math.min(this.configuredBoxLines, available);
@@ -107,66 +95,45 @@ export class BoxModel {
     this.current = null;
   }
 
-  /** Signal that subsequent content is assistant text output. */
-  markTextStart(): void {
-    if (!this.inText) {
-      this.lastTextStart = this.lines.length;
-      this.inText = true;
-    }
-  }
-
-  /** Signal that subsequent content is not text (tool, metadata, etc.). */
-  markNonText(): void {
-    this.inText = false;
-  }
-
   /** Replace the chin tag list. */
   setChin(tags: Array<ChinTag>): void {
     this.chinTags = tags;
   }
 
-  /** Render + cursor control: overwrites the previous draw if there was one. */
+  /**
+   * Paint a frame on the alternate screen.
+   *
+   * The box lives on the alternate screen rather than in the scrollback, so a
+   * frame is always drawn from the home position and there is no cursor
+   * arithmetic to get wrong. Rewinding by a recorded height cannot survive a
+   * resize: the terminal reflows the frame already on screen, so the row count
+   * recorded when it was drawn no longer describes it, the rewind lands
+   * somewhere arbitrary, and frames stack instead of replacing each other.
+   *
+   * Leaving the alternate screen restores whatever the terminal was showing
+   * before, which is also what makes teardown exact.
+   */
   draw(cols: number): void {
-    let out = HIDE_CURSOR;
-    // Rewind by what is on screen, not by what we are about to draw — the two
-    // differ whenever the terminal was resized since the last frame.
-    if (this.drawn) out += `\x1b[${this.drawnHeight}A\x1b[J`;
-    const frame = this.render(cols);
-    process.stdout.write(out + frame);
-    this.drawn = true;
-    // Count the rows actually emitted rather than trusting a computed height.
-    // Rewinding one row too many overwrites whatever sits above the box — the
-    // command line that started us, or the shell prompt.
-    this.drawnHeight = countRows(frame);
+    let out = "";
+    if (!this.entered) {
+      out += ENTER_ALT_SCREEN + HIDE_CURSOR;
+      this.entered = true;
+    }
+    // Clear below the frame too, so a shrinking box leaves no stale rows.
+    out += CURSOR_HOME + this.render(cols) + CLEAR_BELOW;
+    process.stdout.write(out);
   }
 
   /**
-   * Erase the box and restore the terminal modes `draw` turned off. This must
-   * run on every exit path — including Ctrl-C, which would otherwise hand the
-   * shell back with the cursor hidden and line wrapping disabled, and the next
-   * prompt drawn over the box.
-   *
-   * `keepTail` leaves the last contiguous text block behind as scrollback, for
-   * callers that print nothing after the box.
+   * Return the terminal to the state it was in before the box appeared. This
+   * must run on every exit path — including Ctrl-C, which would otherwise hand
+   * the shell back stuck on the alternate screen with the cursor hidden.
    */
-  flush(cols: number, keepTail = false): void {
-    if (!this.drawn) {
-      process.stdout.write(`${ENABLE_WRAP}${SHOW_CURSOR}`);
-      return;
-    }
-    process.stdout.write(`\x1b[${this.drawnHeight}A\x1b[J`);
-    if (keepTail) {
-      this.ensureCache(cols);
-      const inner = cols - 4;
-      for (const line of this.lines.slice(this.lastTextStart)) {
-        for (const visual of wrapLine(line, inner)) {
-          process.stdout.write(`${visual}\n`);
-        }
-      }
-    }
-    process.stdout.write(`${ENABLE_WRAP}${SHOW_CURSOR}`);
-    this.drawn = false;
-    this.drawnHeight = 0;
+  flush(): void {
+    process.stdout.write(
+      (this.entered ? LEAVE_ALT_SCREEN : "") + ENABLE_WRAP + SHOW_CURSOR,
+    );
+    this.entered = false;
   }
 
   /** Stateless render: rebuild visual lines from the model and return the box. */
@@ -200,13 +167,10 @@ export class BoxModel {
 
     out += `${ansi.dim(`└${"─".repeat(inner + 2)}┘`)}\n`;
 
-    // Always emit the chin row, blank if there are no tags yet. A frame whose
-    // height changes when the first tag lands would leave a stale row behind.
-    //
-    // Truncate it as well: an over-long chin wraps onto a second physical row,
-    // so the frame occupies one row more than it emitted, the next redraw
-    // rewinds one row short, and the top border survives every erase — the
-    // stray `┌` left sitting above the shell prompt.
+    // Always emit the chin row, blank if there are no tags yet, and clip it to
+    // the terminal width. Every row has to be exactly one row tall: an
+    // over-long chin wraps onto a second physical row, which pushes the frame
+    // past the screen and scrolls the top border out of view.
     const chin = this.chinTags.length > 0 ? this.renderChin() : "";
     const width = inner + 4;
     const chinVisible = stripAnsi(chin).length;

@@ -4,6 +4,27 @@ import { BoxModel } from "./box.ts";
 
 const COLS = 60;
 
+/** Capture what a box writes to the terminal. */
+function capture(fn: (box: BoxModel) => void): string {
+  const box = new BoxModel(4);
+  const original = process.stdout.write;
+  let out = "";
+  // biome-ignore lint/suspicious/noExplicitAny: stubbing a stream method
+  process.stdout.write = ((chunk: any) => {
+    out += String(chunk);
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    fn(box);
+  } finally {
+    process.stdout.write = original;
+  }
+  return out;
+}
+
+const ENTER_ALT = "\x1b[?1049h";
+const LEAVE_ALT = "\x1b[?1049l";
+
 function contentRows(box: BoxModel): Array<string> {
   return stripAnsi(box.render(COLS))
     .split("\n")
@@ -108,6 +129,48 @@ describe("BoxModel", () => {
     const border = stripAnsi(box.render(30).split("\n")[0] ?? "");
     expect(border.length).toBe(30);
     expect(border).toContain("…");
+  });
+
+  test("never moves the cursor relative to the previous frame", () => {
+    // Every rewind-by-recorded-height scheme breaks on resize: the terminal
+    // reflows what is already on screen, so the recorded height stops matching
+    // and frames stack instead of replacing. Frames are absolute or nothing.
+    const out = capture((box) => {
+      box.draw(COLS);
+      box.addLine("more");
+      box.draw(40);
+      box.draw(120);
+    });
+    expect(out).not.toMatch(/\x1b\[\d*A/);
+    expect(out.split("\x1b[H").length - 1).toBe(3);
+  });
+
+  test("enters the alternate screen once and leaves it on close", () => {
+    const out = capture((box) => {
+      box.draw(COLS);
+      box.draw(COLS);
+      box.draw(COLS);
+      box.flush();
+    });
+    expect(out.split(ENTER_ALT).length - 1).toBe(1);
+    expect(out.split(LEAVE_ALT).length - 1).toBe(1);
+    expect(out.indexOf(ENTER_ALT)).toBeLessThan(out.indexOf(LEAVE_ALT));
+  });
+
+  test("close restores the cursor and wrapping even if nothing was drawn", () => {
+    const out = capture((box) => box.flush());
+    expect(out).not.toContain(LEAVE_ALT);
+    expect(out).toContain("\x1b[?25h");
+    expect(out).toContain("\x1b[?7h");
+  });
+
+  test("close is safe to call twice", () => {
+    const out = capture((box) => {
+      box.draw(COLS);
+      box.flush();
+      box.flush();
+    });
+    expect(out.split(LEAVE_ALT).length - 1).toBe(1);
   });
 
   test("the chin renders below the frame", () => {
