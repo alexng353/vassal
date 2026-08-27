@@ -53,6 +53,16 @@ export async function writeSession(meta: SessionMeta): Promise<void> {
   await Bun.write(SESSIONS_FILE, JSON.stringify(all, null, 2));
 }
 
+/**
+ * Drop the sticky terminal markers (`exitCode`, `abortedAt`) so a session that
+ * is about to run again is not reported with its previous run's outcome. Keys
+ * are omitted rather than set to `undefined` so the on-disk record stays clean.
+ */
+export function clearRecordedOutcome(meta: SessionMeta): SessionMeta {
+  const { exitCode: _exitCode, abortedAt: _abortedAt, ...rest } = meta;
+  return { ...rest, lastActivityAt: Date.now() };
+}
+
 export async function getSession(id: string): Promise<SessionMeta | null> {
   const all = await readSessions();
   return all[id] ?? null;

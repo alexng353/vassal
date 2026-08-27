@@ -10,7 +10,11 @@ import {
 } from "../lib/opencode.ts";
 import { formatDispatchResult } from "../lib/output.ts";
 import { type Progress, SILENT, startProgress } from "../lib/progress.ts";
-import { getSession, writeSession } from "../lib/state.ts";
+import {
+  clearRecordedOutcome,
+  getSession,
+  writeSession,
+} from "../lib/state.ts";
 import type { DispatchOptions, DispatchResult } from "../lib/types.ts";
 import {
   createWorktree,
@@ -107,6 +111,13 @@ export async function dispatch(
   let outcome: PromptOutcome | null = null;
   let exitCode = 1;
   let meta = await getSession(sessionId);
+  // A resumed session still carries the previous run's outcome. Clear it before
+  // the prompt goes out, or `list`/`attach` report the session as done/failed/
+  // aborted for the entire time it is actually working.
+  if (meta) {
+    meta = clearRecordedOutcome(meta);
+    await writeSession(meta);
+  }
   try {
     outcome = await sendPrompt(client, {
       sessionId,

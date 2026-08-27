@@ -17,26 +17,62 @@ export type Status =
 
 const NO_PARTS_STALL_MS = 2 * 60_000;
 const ZOMBIE_STALL_MS = 60 * 60_000;
+// The CLI stamps the terminal marker from its own process moments after the
+// daemon stamps the turn that ended; only treat daemon activity as *newer* than
+// the marker when it is clearly later, not merely a few millis off.
+const TERMINAL_OVERRIDE_GRACE_MS = 5_000;
+
+/**
+ * The terminal state vassal recorded for a session, plus the moment it was
+ * recorded. Recorded state is sticky — nothing clears `abortedAt`/`exitCode`
+ * except a new dispatch — so it is only authoritative until the daemon shows
+ * activity after `at`.
+ */
+type RecordedOutcome = { status: Status; at: number };
+
+function recordedOutcome(meta: SessionMeta): RecordedOutcome | null {
+  if (meta.abortedAt) return { status: "aborted", at: meta.abortedAt };
+  if (meta.exitCode === 0) return { status: "done", at: meta.lastActivityAt };
+  if (typeof meta.exitCode === "number") {
+    return { status: "failed", at: meta.lastActivityAt };
+  }
+  return null;
+}
 
 export async function deriveStatus(
   meta: SessionMeta,
   client?: OpencodeClient,
   pendingQuestions?: Array<PendingQuestion>,
 ): Promise<Status> {
-  if (meta.abortedAt) return "aborted";
-  if (meta.exitCode === 0) return "done";
-  if (typeof meta.exitCode === "number") return "failed";
-  if (pendingQuestions?.some((question) => question.sessionID === meta.id)) {
-    return "waiting";
-  }
-  if (!client) return "running";
+  const recorded = recordedOutcome(meta);
+  const waiting = pendingQuestions?.some(
+    (question) => question.sessionID === meta.id,
+  );
 
-  let messages: Array<AssistantTurn>;
-  try {
-    messages = await listSessionMessages(client, meta.id);
-  } catch {
-    return "running";
+  let messages: Array<AssistantTurn> | null = null;
+  if (client) {
+    try {
+      messages = await listSessionMessages(client, meta.id);
+    } catch {
+      messages = null;
+    }
   }
+
+  // Without a live view of the session, the recorded outcome is all we have.
+  if (!messages) {
+    if (recorded) return recorded.status;
+    return waiting ? "waiting" : "running";
+  }
+
+  if (
+    recorded &&
+    latestMessageActivityAt(messages) <=
+      recorded.at + TERMINAL_OVERRIDE_GRACE_MS
+  ) {
+    return recorded.status;
+  }
+  if (waiting) return "waiting";
+
   const last = lastAssistantTurn(messages);
   if (last && turnCompleted(last)) return "done";
   const sinceActivity = Date.now() - latestActivityAt(meta, messages);
@@ -75,11 +111,20 @@ type PartWithTime = AssistantTurn["parts"][number] & {
   state?: { time?: { start?: number; end?: number; created?: number } };
 };
 
-function latestActivityAt(
+export function latestActivityAt(
   meta: SessionMeta,
   messages: Array<AssistantTurn>,
 ): number {
-  let latest = meta.lastActivityAt;
+  return Math.max(meta.lastActivityAt, latestMessageActivityAt(messages));
+}
+
+/**
+ * Newest timestamp the daemon knows about, ignoring anything vassal recorded
+ * itself — the two must stay separable to tell "resumed after the marker" from
+ * "the marker is the newest thing that happened".
+ */
+function latestMessageActivityAt(messages: Array<AssistantTurn>): number {
+  let latest = 0;
   for (const message of messages) {
     latest = Math.max(latest, message.info.time.created);
     if ("completed" in message.info.time) {
