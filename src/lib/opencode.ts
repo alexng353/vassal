@@ -156,6 +156,24 @@ export async function listSessionMessages(
   return res.data;
 }
 
+/**
+ * The daemon's own `time.updated` for a session — a ~600 byte response, versus
+ * the megabyte of message history `listSessionMessages` pulls down. Used to
+ * decide whether the expensive fetch can tell us anything new at all.
+ * Returns null when the daemon can't answer, so callers fall back to messages.
+ */
+export async function getSessionActivityAt(
+  client: OpencodeClient,
+  sessionId: string,
+): Promise<number | null> {
+  try {
+    const res = await client.session.get({ path: { id: sessionId } });
+    return res.data?.time.updated ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function listOpencodeSessions(
   client: OpencodeClient,
 ): Promise<Array<{ id: string; title: string }>> {

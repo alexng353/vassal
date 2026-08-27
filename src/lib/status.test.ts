@@ -45,6 +45,27 @@ function clientWith(messages: Array<SessionMessage>): OpencodeClient {
   } as unknown as OpencodeClient;
 }
 
+/**
+ * A client that answers the cheap `session.get` probe, and counts how often the
+ * expensive message fetch was reached.
+ */
+function clientWithActivity(
+  updatedAt: number,
+  messages: Array<SessionMessage> = [],
+): { client: OpencodeClient; messageFetches: () => number } {
+  let fetches = 0;
+  const client = {
+    session: {
+      get: async () => ({ data: { time: { created: 0, updated: updatedAt } } }),
+      messages: async () => {
+        fetches += 1;
+        return { data: messages };
+      },
+    },
+  } as unknown as OpencodeClient;
+  return { client, messageFetches: () => fetches };
+}
+
 const brokenClient = {
   session: { messages: async () => ({ error: "daemon is down" }) },
 } as unknown as OpencodeClient;
@@ -107,6 +128,31 @@ describe("deriveStatus recorded outcomes", () => {
       "aborted",
     );
     expect(await deriveStatus(meta({ exitCode: 2 }))).toBe("failed");
+  });
+
+  test("a finished session skips the message fetch entirely", async () => {
+    const finishedAt = NOW - 60_000;
+    const { client, messageFetches } = clientWithActivity(finishedAt - 100);
+    const status = await deriveStatus(
+      meta({ exitCode: 0, lastActivityAt: finishedAt }),
+      client,
+    );
+    expect(status).toBe("done");
+    expect(messageFetches()).toBe(0);
+  });
+
+  test("a finished session the daemon has touched since still fetches", async () => {
+    const finishedAt = NOW - 600_000;
+    const { client, messageFetches } = clientWithActivity(NOW - 5_000, [
+      assistantTurn({ created: finishedAt - 30_000, completed: finishedAt }),
+      assistantTurn({ created: NOW - 5_000, text: "working" }),
+    ]);
+    const status = await deriveStatus(
+      meta({ exitCode: 0, lastActivityAt: finishedAt }),
+      client,
+    );
+    expect(status).toBe("running");
+    expect(messageFetches()).toBe(1);
   });
 
   test("recorded outcome wins when the daemon call fails", async () => {

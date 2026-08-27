@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import {
+  getSessionActivityAt,
   listPendingQuestions,
   listSessionMessages,
   type OpencodeClient,
@@ -49,6 +50,18 @@ export async function deriveStatus(
     (question) => question.sessionID === meta.id,
   );
 
+  // A finished session only stops being finished if the daemon has activity
+  // newer than the marker. Ask the cheap session endpoint that question first:
+  // `listSessionMessages` pulls the entire turn history (routinely megabytes),
+  // and `list` would pay that for every recorded-terminal session on disk.
+  if (
+    client &&
+    recorded &&
+    !(await daemonActedSince(client, meta.id, recorded))
+  ) {
+    return recorded.status;
+  }
+
   let messages: Array<AssistantTurn> | null = null;
   if (client) {
     try {
@@ -83,6 +96,22 @@ export async function deriveStatus(
   }
 
   return "running";
+}
+
+/**
+ * True when the daemon's session record has moved since we stamped the terminal
+ * marker — i.e. the session was resumed and the recorded outcome is stale.
+ * Unknown (daemon can't answer) counts as "acted", so we fall through to the
+ * authoritative message history rather than trusting a stale marker.
+ */
+async function daemonActedSince(
+  client: OpencodeClient,
+  sessionId: string,
+  recorded: RecordedOutcome,
+): Promise<boolean> {
+  const updatedAt = await getSessionActivityAt(client, sessionId);
+  if (updatedAt === null) return true;
+  return updatedAt > recorded.at + TERMINAL_OVERRIDE_GRACE_MS;
 }
 
 export async function listPendingQuestionsForStatus(
