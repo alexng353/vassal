@@ -27,7 +27,7 @@ const HELP = dedent`
     vassal status <session-id>            show metadata for a session
     vassal peek <session-id>              snapshot of the latest turn
     vassal attach <session-id>            block until terminal, emit dispatch contract
-    vassal stream [-h] <session-id>       follow live output, then emit dispatch contract
+    vassal stream [-H] <session-id>       follow live output, then emit dispatch contract
     vassal answer <session-id> <answer>   reply to a pending question
     vassal answer <session-id> --reject   reject a pending question
     vassal abort <session-id>             interrupt an in-flight session
@@ -49,7 +49,8 @@ const HELP = dedent`
     --quiet                 suppress stderr progress lines (also VASSAL_QUIET=1)
     --all                   show all sessions regardless of age (sugar for --max-age 0)
     --max-age <dur>         hide sessions older than this (default: 24h; e.g. 7d, 30m)
-    -h, --human             stream in a live status box instead of plain lines
+    -H, --human             stream in a live status box instead of plain lines
+    -h, --help              print this help
 
   ANSWERS
     For one pending prompt, pass one answer or multiple labels for multi-select.
@@ -94,9 +95,13 @@ function parseArgs(argv: string[]): ParsedArgs {
   while (i < argv.length) {
     const arg = argv[i];
     if (arg === undefined) break;
-    // `-h` is human mode for `stream`, not help. Top-level help is handled
-    // before parsing, so `vassal -h` still prints usage.
     if (arg === "-h") {
+      flags.help = true;
+      i += 1;
+      continue;
+    }
+    // Capital H, because -h belongs to help.
+    if (arg === "-H") {
       flags.human = true;
       i += 1;
       continue;
@@ -144,12 +149,16 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
-  if (argv.length === 0 || argv[0] === "-h" || argv[0] === "--help") {
+  if (argv.length === 0) {
     console.log(HELP);
     return 0;
   }
 
   const { command, positional, flags } = parseArgs(argv);
+  if (flags.help === true) {
+    console.log(HELP);
+    return 0;
+  }
 
   switch (command) {
     case "list": {

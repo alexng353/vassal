@@ -1,7 +1,7 @@
 /**
- * ANSI helpers, ported from chad (`src/ansi.ts`, same author, same licence).
- * Kept as a copy rather than a dependency — vassal must stay installable on its
- * own, and this is the stable half of chad's renderer.
+ * ANSI helpers, ported from chad (`src/ansi.ts`). Kept as a copy rather than a
+ * dependency — vassal must stay installable on its own, and this is the stable
+ * half of chad's renderer.
  */
 export const ansi = {
   bold: (s: string) => `\x1b[1m${s}\x1b[22m`,

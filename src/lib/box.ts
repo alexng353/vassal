@@ -3,8 +3,7 @@ import { ansi, splitAtWidth, stripAnsi, wrapLine } from "./ansi.ts";
 export type ChinTag = { label: string; style?: (s: string) => string };
 
 /**
- * Fixed-height scrolling status box, ported from chad (`src/box.ts`, same
- * author, same licence).
+ * Fixed-height scrolling status box, ported from chad (`src/box.ts`).
  *
  * Owns the three constrained regions (title, content, chin) and all drawing
  * state, so the caller just sets data and calls `draw()`. Wrapped visual lines
