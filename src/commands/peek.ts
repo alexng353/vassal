@@ -8,7 +8,7 @@ import {
   type PendingQuestion,
   type SessionMessage,
 } from "../lib/opencode.ts";
-import { deriveStatus } from "../lib/status.ts";
+import { deriveStatus, latestActivityAt } from "../lib/status.ts";
 
 const MAX_TEXT_CHARS = 400;
 const MAX_INPUT_CHARS = 200;
@@ -28,14 +28,16 @@ export async function runPeek(input: string): Promise<number> {
   const pendingQuestion = questions.find(
     (question) => question.sessionID === meta.id,
   );
-  const last = lastAssistantTurn(messages);
+  const last = selectAssistantTurn(messages);
   const status = await deriveStatus(meta, client, questions);
 
   console.log(`SESSION ${displayId(meta)}`);
   if (meta.alias) console.log(`ID ${meta.id}`);
   console.log(`TITLE ${meta.title}`);
   console.log(`STATUS ${status}`);
-  console.log(`LAST ${new Date(meta.lastActivityAt).toISOString()}`);
+  console.log(
+    `LAST ${new Date(latestActivityAt(meta, messages)).toISOString()}`,
+  );
   console.log(`COST $${meta.cost.toFixed(4)}`);
   console.log("---");
 
@@ -51,16 +53,22 @@ export async function runPeek(input: string): Promise<number> {
     console.log("");
   }
 
-  if (last) {
-    console.log("LAST ASSISTANT:");
-    const lines = formatAssistantParts(last.parts);
-    if (lines.length === 0) {
-      console.log("  (no parts yet)");
-    } else {
-      for (const line of lines) console.log(`  ${line}`);
-    }
-  } else {
+  if (!last) {
     console.log("LAST ASSISTANT: (none)");
+    return 0;
+  }
+
+  console.log("LAST ASSISTANT:");
+  if (last.staleTurn) {
+    console.log(
+      "  (newest turn has no parts yet — showing the turn before it)",
+    );
+  }
+  const lines = formatAssistantParts(last.turn.parts);
+  if (lines.length === 0) {
+    console.log("  (no parts yet)");
+  } else {
+    for (const line of lines) console.log(`  ${line}`);
   }
 
   return 0;
@@ -79,14 +87,33 @@ function printPendingQuestion(request: PendingQuestion): void {
   }
 }
 
-function lastAssistantTurn(
+export type SelectedTurn = {
+  turn: SessionMessage;
+  /** True when the newest assistant turn was empty and we fell back to an older one. */
+  staleTurn: boolean;
+};
+
+/**
+ * Pick the assistant turn worth showing.
+ *
+ * opencode inserts an assistant row at `step-start`, before any part lands, so
+ * peeking inside that window would otherwise render an empty turn and read as
+ * "wedged" to the orchestrator. Fall back to the newest turn that actually has
+ * something to show, and say so.
+ */
+export function selectAssistantTurn(
   messages: Array<SessionMessage>,
-): SessionMessage | null {
+): SelectedTurn | null {
+  let newest: SessionMessage | null = null;
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
-    if (m && m.info.role === "assistant") return m;
+    if (!m || m.info.role !== "assistant") continue;
+    if (newest === null) newest = m;
+    if (formatAssistantParts(m.parts).length > 0) {
+      return { turn: m, staleTurn: m !== newest };
+    }
   }
-  return null;
+  return newest === null ? null : { turn: newest, staleTurn: false };
 }
 
 function lastUserMessage(
