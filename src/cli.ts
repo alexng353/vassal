@@ -24,7 +24,7 @@ const HELP = dedent`
   USAGE
     vassal <prompt>                       dispatch a new task (worktree by default)
     vassal --session <id> <prompt>        resume an existing session
-    vassal list [--all] [--max-age <dur>] list known sessions (default: 24h)
+    vassal list [-n <count>] [--all]      list known sessions (default: 24h)
     vassal status <session-id>            show metadata for a session
     vassal peek <session-id>              snapshot of the latest turn
     vassal attach <session-id>            block until terminal, emit dispatch contract
@@ -50,6 +50,7 @@ const HELP = dedent`
     --quiet                 suppress stderr progress lines (also VASSAL_QUIET=1)
     --all                   show all sessions regardless of age (sugar for --max-age 0)
     --max-age <dur>         hide sessions older than this (default: 24h; e.g. 7d, 30m)
+    -n <count>              show only the first <count> rows (also -<count>, like head)
     -H, --human             stream in a live status box instead of plain lines
     -h, --help              print this help
 
@@ -104,6 +105,23 @@ function parseArgs(argv: string[]): ParsedArgs {
     // Capital H, because -h belongs to help.
     if (arg === "-H") {
       flags.human = true;
+      i += 1;
+      continue;
+    }
+    // `head` semantics: -n 5 and the bare -5 shorthand both mean five rows.
+    if (arg === "-n") {
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        flags.n = next;
+        i += 2;
+      } else {
+        flags.n = true;
+        i += 1;
+      }
+      continue;
+    }
+    if (/^-\d+$/.test(arg)) {
+      flags.n = arg.slice(1);
       i += 1;
       continue;
     }
@@ -176,7 +194,19 @@ async function main(): Promise<number> {
         console.error(`bad --max-age: ${(e as Error).message}`);
         return 2;
       }
-      return runList({ maxAgeMs });
+      let limit: number | null = null;
+      if (flags.n !== undefined) {
+        if (typeof flags.n !== "string") {
+          console.error("-n requires a count, e.g. -n 10 (or -10)");
+          return 2;
+        }
+        limit = Number.parseInt(flags.n, 10);
+        if (!Number.isFinite(limit) || limit < 1) {
+          console.error(`bad -n: expected a positive count, got "${flags.n}"`);
+          return 2;
+        }
+      }
+      return runList({ maxAgeMs, limit });
     }
     case "status": {
       const id = positional[0];
