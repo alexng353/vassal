@@ -14,6 +14,7 @@ import {
   runServerStop,
 } from "./commands/server.ts";
 import { runStatus } from "./commands/status.ts";
+import { runStream } from "./commands/stream.ts";
 import { parseDuration } from "./lib/duration.ts";
 
 const HELP = dedent`
@@ -26,6 +27,7 @@ const HELP = dedent`
     vassal status <session-id>            show metadata for a session
     vassal peek <session-id>              snapshot of the latest turn
     vassal attach <session-id>            block until terminal, emit dispatch contract
+    vassal stream [-h] <session-id>       follow live output, then emit dispatch contract
     vassal answer <session-id> <answer>   reply to a pending question
     vassal answer <session-id> --reject   reject a pending question
     vassal abort <session-id>             interrupt an in-flight session
@@ -47,6 +49,7 @@ const HELP = dedent`
     --quiet                 suppress stderr progress lines (also VASSAL_QUIET=1)
     --all                   show all sessions regardless of age (sugar for --max-age 0)
     --max-age <dur>         hide sessions older than this (default: 24h; e.g. 7d, 30m)
+    -h, --human             stream in a live status box instead of plain lines
 
   ANSWERS
     For one pending prompt, pass one answer or multiple labels for multi-select.
@@ -81,6 +84,7 @@ const BOOLEAN_FLAGS = new Set([
   "reject",
   "orphans",
   "quiet",
+  "human",
 ]);
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -90,6 +94,13 @@ function parseArgs(argv: string[]): ParsedArgs {
   while (i < argv.length) {
     const arg = argv[i];
     if (arg === undefined) break;
+    // `-h` is human mode for `stream`, not help. Top-level help is handled
+    // before parsing, so `vassal -h` still prints usage.
+    if (arg === "-h") {
+      flags.human = true;
+      i += 1;
+      continue;
+    }
     if (arg.startsWith("--")) {
       const name = arg.slice(2);
       if (BOOLEAN_FLAGS.has(name)) {
@@ -115,6 +126,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     "status",
     "peek",
     "attach",
+    "stream",
     "answer",
     "abort",
     "cleanup",
@@ -179,6 +191,14 @@ async function main(): Promise<number> {
         return 2;
       }
       return runAttach(id);
+    }
+    case "stream": {
+      const id = positional[0];
+      if (!id) {
+        console.error("stream requires a session id");
+        return 2;
+      }
+      return runStream(id, { human: flags.human === true });
     }
     case "answer": {
       const id = positional[0];
