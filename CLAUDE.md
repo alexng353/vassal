@@ -77,6 +77,12 @@ This contract is what makes vassal usable from a parent agent. Do not change lin
 
 `peek` and `abort` (mid-flight commands) have their own free-form output and do **not** follow the dispatch contract. `peek` prints metadata + a snapshot of the latest assistant turn (text/reasoning/tool calls); `abort` prints a one-line acknowledgement. Both are documented in the skill.
 
+## Questions are directory-scoped
+
+The daemon keeps pending questions per project, resolved from a `directory` query param, and silently falls back to whatever directory it was started in when the param is missing. Every worktree dispatch runs somewhere other than the daemon's cwd, so omitting it makes the question invisible: `/question` returns `[]`, `answer` reports "no pending question", `deriveStatus` never yields `waiting`, and the session sits wedged on an `ask()` that nothing can reach. `listPendingQuestions`/`replyQuestion`/`rejectQuestion` all take a directory — pass `sessionDirectory(meta)`, never a bare daemon URL. `list` covers many sessions at once, so it queries each distinct directory and merges.
+
+A pending question blocks `session.prompt` indefinitely; there is no timeout. That is the intended shape (the orchestrator answers via `vassal answer`), but it means anything that hides a question turns into a hung dispatch.
+
 ## Worktree lifecycle
 
 A new dispatch (no `--session`) creates a worktree at `$XDG_CACHE_HOME/vassal/worktrees/vassal-wt-<short-id>` (defaulting to `~/.cache/vassal/worktrees/`) on a branch `vassal/<short-id>` off the current HEAD. The dispatched agent edits there. The parent orchestrator is responsible for:

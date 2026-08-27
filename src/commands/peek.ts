@@ -9,6 +9,7 @@ import {
   type SessionMessage,
 } from "../lib/opencode.ts";
 import { deriveStatus, latestActivityAt } from "../lib/status.ts";
+import { sessionDirectory } from "../lib/types.ts";
 
 const MAX_TEXT_CHARS = 400;
 const MAX_INPUT_CHARS = 200;
@@ -24,7 +25,10 @@ export async function runPeek(input: string): Promise<number> {
   const client = makeClient(daemon);
 
   const messages = await listSessionMessages(client, meta.id);
-  const questions = await listPendingQuestions(daemon.url);
+  const questions = await listPendingQuestions(
+    daemon.url,
+    sessionDirectory(meta),
+  );
   const pendingQuestion = questions.find(
     (question) => question.sessionID === meta.id,
   );

@@ -8,7 +8,7 @@ import {
   type Status,
   worktreeMissing,
 } from "../lib/status.ts";
-import type { SessionMeta } from "../lib/types.ts";
+import { type SessionMeta, sessionDirectory } from "../lib/types.ts";
 
 export async function runList(options: { maxAgeMs: number }): Promise<number> {
   const sessions = await readSessions();
@@ -33,8 +33,15 @@ export async function runList(options: { maxAgeMs: number }): Promise<number> {
     (meta) => meta.lastActivityAt >= cutoff || !hasTerminalState(meta),
   );
   const daemonClient = await makeClientForLiveSessions(candidates);
+  // Only a live session can be blocked on a question, and each lookup is scoped
+  // to one directory — so ask about the directories that could actually answer.
   const pendingQuestions = daemonClient
-    ? await listPendingQuestionsForStatus(daemonClient.daemonUrl)
+    ? await listPendingQuestionsForStatus(
+        daemonClient.daemonUrl,
+        candidates
+          .filter((meta) => !hasTerminalState(meta))
+          .map(sessionDirectory),
+      )
     : [];
   const candidatesWithStatus = await Promise.all(
     candidates.map(async (meta) => ({

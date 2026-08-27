@@ -114,14 +114,25 @@ async function daemonActedSince(
   return updatedAt > recorded.at + TERMINAL_OVERRIDE_GRACE_MS;
 }
 
+/**
+ * Pending questions across a set of sessions. The daemon scopes its question
+ * registry by directory, so there is no single global list to fetch — ask once
+ * per distinct directory and merge. Directories inside one project answer with
+ * the same list, hence the dedupe by request id.
+ */
 export async function listPendingQuestionsForStatus(
   daemonUrl: string,
+  directories: Iterable<string>,
 ): Promise<Array<PendingQuestion>> {
-  try {
-    return await listPendingQuestions(daemonUrl);
-  } catch {
-    return [];
-  }
+  const unique = [...new Set(directories)];
+  const results = await Promise.all(
+    unique.map((directory) =>
+      listPendingQuestions(daemonUrl, directory).catch(() => []),
+    ),
+  );
+  const byId = new Map<string, PendingQuestion>();
+  for (const question of results.flat()) byId.set(question.id, question);
+  return [...byId.values()];
 }
 
 export function worktreeMissing(meta: SessionMeta): boolean {

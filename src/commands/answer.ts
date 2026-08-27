@@ -6,6 +6,7 @@ import {
   replyQuestion,
 } from "../lib/opencode.ts";
 import { readDaemonState } from "../lib/state.ts";
+import { sessionDirectory } from "../lib/types.ts";
 
 export async function runAnswer(
   input: string,
@@ -24,7 +25,8 @@ export async function runAnswer(
     return 1;
   }
 
-  const request = (await listPendingQuestions(daemon.url)).find(
+  const directory = sessionDirectory(meta);
+  const request = (await listPendingQuestions(daemon.url, directory)).find(
     (question) => question.sessionID === meta.id,
   );
   if (!request) {
@@ -37,7 +39,7 @@ export async function runAnswer(
       console.error("--reject conflicts with answer options");
       return 2;
     }
-    await rejectQuestion(daemon.url, request.id);
+    await rejectQuestion(daemon.url, request.id, directory);
     console.log(
       `rejected question ${request.id} for session ${displayId(meta)}`,
     );
@@ -52,7 +54,7 @@ export async function runAnswer(
     return 2;
   }
 
-  await replyQuestion(daemon.url, request.id, answers);
+  await replyQuestion(daemon.url, request.id, answers, directory);
   console.log(`answered question ${request.id} for session ${displayId(meta)}`);
   return 0;
 }

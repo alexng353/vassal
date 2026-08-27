@@ -10,7 +10,7 @@ import {
 import { formatDispatchResult } from "../lib/output.ts";
 import { getSession } from "../lib/state.ts";
 import { deriveStatus, type Status } from "../lib/status.ts";
-import type { SessionMeta } from "../lib/types.ts";
+import { type SessionMeta, sessionDirectory } from "../lib/types.ts";
 
 const POLL_INTERVAL_MS = 2_000;
 const TERMINAL: ReadonlySet<Status> = new Set(["done", "failed", "aborted"]);
@@ -33,7 +33,10 @@ export async function runAttach(input: string): Promise<number> {
     const refreshed = await getSession(meta.id);
     if (refreshed) meta = refreshed;
 
-    const questions = await listPendingQuestions(daemon.url).catch(() => []);
+    const questions = await listPendingQuestions(
+      daemon.url,
+      sessionDirectory(meta),
+    ).catch(() => []);
     status = await deriveStatus(meta, client, questions);
 
     if (status !== lastReported) {

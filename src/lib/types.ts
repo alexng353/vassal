@@ -39,3 +39,8 @@ export type SessionMeta = {
   abortedAt?: number;
   alias?: string;
 };
+
+/** Where the dispatched agent actually runs — the worktree when there is one. */
+export function sessionDirectory(meta: SessionMeta): string {
+  return meta.worktree ?? meta.cwd;
+}

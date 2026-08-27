@@ -182,33 +182,57 @@ export async function listOpencodeSessions(
   return res.data.map((s) => ({ id: s.id, title: s.title }));
 }
 
+/**
+ * The daemon keeps pending questions per *project*, resolved from a `directory`
+ * query param, and falls back to whatever directory it was started in when the
+ * param is missing. Since every worktree dispatch runs somewhere other than the
+ * daemon's own cwd, omitting it hides the question entirely: `/question` comes
+ * back empty, `answer` reports "no pending question", and the session sits
+ * wedged on an `ask()` that nothing can reach. Always pass the session's
+ * working directory.
+ */
 export async function listPendingQuestions(
   daemonUrl: string,
+  directory: string,
 ): Promise<Array<PendingQuestion>> {
-  return fetchJson<Array<PendingQuestion>>(daemonUrl, "/question", {
-    method: "GET",
-  });
+  return fetchJson<Array<PendingQuestion>>(
+    daemonUrl,
+    withDirectory("/question", directory),
+    { method: "GET" },
+  );
 }
 
 export async function replyQuestion(
   daemonUrl: string,
   requestId: string,
   answers: Array<Array<string>>,
+  directory: string,
 ): Promise<void> {
-  await fetchJson(daemonUrl, `/question/${requestId}/reply`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ answers }),
-  });
+  await fetchJson(
+    daemonUrl,
+    withDirectory(`/question/${requestId}/reply`, directory),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ answers }),
+    },
+  );
 }
 
 export async function rejectQuestion(
   daemonUrl: string,
   requestId: string,
+  directory: string,
 ): Promise<void> {
-  await fetchJson(daemonUrl, `/question/${requestId}/reject`, {
-    method: "POST",
-  });
+  await fetchJson(
+    daemonUrl,
+    withDirectory(`/question/${requestId}/reject`, directory),
+    { method: "POST" },
+  );
+}
+
+export function withDirectory(path: string, directory: string): string {
+  return `${path}?directory=${encodeURIComponent(directory)}`;
 }
 
 async function fetchJson<T = unknown>(
