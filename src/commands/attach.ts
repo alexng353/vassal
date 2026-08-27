@@ -1,10 +1,12 @@
 import type { Part } from "@opencode-ai/sdk";
 import { resolveIdOrAlias } from "../lib/alias.ts";
 import { ensureDaemon } from "../lib/daemon.ts";
+import { resolveSessionModel } from "../lib/model.ts";
 import {
   listPendingQuestions,
   listSessionMessages,
   makeClient,
+  modelFromMessages,
   type SessionMessage,
 } from "../lib/opencode.ts";
 import { formatDispatchResult } from "../lib/output.ts";
@@ -61,6 +63,10 @@ export async function runAttach(input: string): Promise<number> {
   const finalText = lastAssistant ? extractFinalText(lastAssistant.parts) : "";
   const cost = assistantCost(lastAssistant) ?? meta.cost ?? null;
   const exitCode = exitFromStatus(status, meta);
+  const { model, effort } = resolveSessionModel(
+    meta,
+    modelFromMessages(messages),
+  );
 
   console.log(
     formatDispatchResult({
@@ -70,6 +76,8 @@ export async function runAttach(input: string): Promise<number> {
       finalText,
       cost,
       exitCode,
+      model,
+      effort,
     }),
   );
   return exitCode;

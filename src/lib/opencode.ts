@@ -1,5 +1,6 @@
 import type { Message, Part } from "@opencode-ai/sdk";
 import { createOpencodeClient } from "@opencode-ai/sdk";
+import { resolveModelSpec, splitModel } from "./model.ts";
 import type { DaemonState } from "./types.ts";
 
 export type OpencodeClient = ReturnType<typeof createOpencodeClient>;
@@ -51,22 +52,12 @@ export type PromptOutcome = {
   cost: number | null;
 };
 
-const DEFAULT_MODEL = "openai/gpt-5.6-sol";
-const DEFAULT_EFFORT = "xhigh";
-
 export async function sendPrompt(
   client: OpencodeClient,
   opts: PromptOptions,
 ): Promise<PromptOutcome> {
-  const model = opts.model ?? DEFAULT_MODEL;
-  const effort = opts.effort ?? DEFAULT_EFFORT;
-  const [providerID, ...modelParts] = model.split("/");
-  const modelID = modelParts.join("/");
-  if (!providerID || !modelID) {
-    throw new Error(
-      `invalid model "${opts.model}" — expected "<provider>/<model>"`,
-    );
-  }
+  const { model, effort } = resolveModelSpec(opts.model, opts.effort);
+  const { providerID, modelID } = splitModel(model);
 
   await validateEffort(client, providerID, modelID, effort, opts.cwd);
 
@@ -142,6 +133,23 @@ export type SessionMessage = {
   info: Message;
   parts: Array<Part>;
 };
+
+/**
+ * The `provider/model` of the newest assistant turn — what the daemon actually
+ * ran, as opposed to what vassal recorded. Sessions from before vassal tracked
+ * the model have nothing on disk, and this is the only place to learn it.
+ */
+export function modelFromMessages(
+  messages: Array<SessionMessage>,
+): string | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const info = messages[i]?.info;
+    if (!info || info.role !== "assistant") continue;
+    if (!info.providerID || !info.modelID) continue;
+    return `${info.providerID}/${info.modelID}`;
+  }
+  return null;
+}
 
 export async function listSessionMessages(
   client: OpencodeClient,

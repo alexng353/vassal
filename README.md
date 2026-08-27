@@ -43,6 +43,7 @@ vassal cleanup ses_abc123
 ```
 SESSION ses_abc123
 WORKTREE /tmp/vassal-wt-abc123
+MODEL Sol XH
 COST $0.0421
 EXIT 0
 ---

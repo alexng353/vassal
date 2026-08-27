@@ -1,10 +1,12 @@
 import type { Part } from "@opencode-ai/sdk";
 import { displayId, resolveIdOrAlias } from "../lib/alias.ts";
 import { ensureDaemon } from "../lib/daemon.ts";
+import { formatModelLabel, resolveSessionModel } from "../lib/model.ts";
 import {
   listPendingQuestions,
   listSessionMessages,
   makeClient,
+  modelFromMessages,
   type PendingQuestion,
   type SessionMessage,
 } from "../lib/opencode.ts";
@@ -38,6 +40,8 @@ export async function runPeek(input: string): Promise<number> {
   console.log(`SESSION ${displayId(meta)}`);
   if (meta.alias) console.log(`ID ${meta.id}`);
   console.log(`TITLE ${meta.title}`);
+  const observed = resolveSessionModel(meta, modelFromMessages(messages));
+  console.log(`MODEL ${formatModelLabel(observed.model, observed.effort)}`);
   console.log(`STATUS ${status}`);
   console.log(
     `LAST ${new Date(latestActivityAt(meta, messages)).toISOString()}`,

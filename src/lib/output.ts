@@ -1,9 +1,11 @@
+import { formatModelLabel } from "./model.ts";
 import type { DispatchResult } from "./types.ts";
 
 export function formatDispatchResult(r: DispatchResult): string {
   const lines = [
     `SESSION ${r.alias ?? r.sessionId}`,
     r.worktree ? `WORKTREE ${r.worktree}` : "WORKTREE -",
+    `MODEL ${formatModelLabel(r.model, r.effort)}`,
     r.cost !== null ? `COST $${r.cost.toFixed(4)}` : "COST -",
     `EXIT ${r.exitCode}`,
     "---",

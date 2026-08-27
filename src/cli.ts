@@ -67,6 +67,7 @@ const HELP = dedent`
   OUTPUT (dispatch)
     SESSION <id>
     WORKTREE <path|->
+    MODEL <name effort|->
     COST $<amount|->
     EXIT <code>
     ---

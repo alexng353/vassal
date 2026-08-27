@@ -12,6 +12,8 @@ const TICK_MS = 1_000;
 export type SessionState = {
   status: Status;
   label: string;
+  /** Short model name for the chin, e.g. `Sol XH`; null when unknown. */
+  model: string | null;
   cost: number;
   tokens: { input: number; output: number } | null;
   /** When the current turn started, for the runtime clock. */
@@ -141,6 +143,7 @@ export class BoxSink implements StreamSink {
     const tags = [
       { label: state.label, style: ansi.cyan },
       { label: state.status, style: statusStyle(state.status) },
+      ...(state.model ? [{ label: state.model }] : []),
       { label: formatElapsed(Date.now() - state.startedAt) },
       { label: `$${state.cost.toFixed(4)}` },
     ];

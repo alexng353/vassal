@@ -7,10 +7,12 @@ import {
   subscribeEvents,
 } from "../lib/events.ts";
 import { exitAfterFlush } from "../lib/exit.ts";
+import { formatModelLabel, resolveSessionModel } from "../lib/model.ts";
 import {
   listPendingQuestions,
   listSessionMessages,
   makeClient,
+  modelFromMessages,
   type OpencodeClient,
   type PendingQuestion,
   type SessionMessage,
@@ -51,6 +53,8 @@ type Usage = { input: number; output: number; cost: number };
 export class SessionStats {
   private byMessage = new Map<string, Usage>();
   startedAt: number;
+  /** `provider/model` of the newest assistant message seen, if it carried one. */
+  model: string | null = null;
 
   constructor(startedAt: number) {
     this.startedAt = startedAt;
@@ -67,7 +71,12 @@ export class SessionStats {
     const usage = info as {
       cost?: number;
       tokens?: { input?: number; output?: number };
+      providerID?: string;
+      modelID?: string;
     };
+    if (usage.providerID && usage.modelID) {
+      this.model = `${usage.providerID}/${usage.modelID}`;
+    }
     this.byMessage.set(timed.id, {
       input: usage.tokens?.input ?? 0,
       output: usage.tokens?.output ?? 0,
@@ -129,9 +138,11 @@ export async function runStream(
   let status = await currentStatus(meta, client, daemon.url);
   const paint = () => {
     const totals = stats.totals();
+    const { model, effort } = resolveSessionModel(meta, stats.model);
     sink.state({
       status,
       label: displayId(meta),
+      model: model ? formatModelLabel(model, effort) : null,
       cost: totals.cost || meta.cost,
       tokens:
         totals.input || totals.output
@@ -192,6 +203,10 @@ export async function runStream(
   );
   const lastAssistant = lastAssistantTurn(final);
   const exitCode = exitFromStatus(status, meta);
+  const { model, effort } = resolveSessionModel(
+    meta,
+    modelFromMessages(final) ?? stats.model,
+  );
   console.log(
     formatDispatchResult({
       sessionId: meta.id,
@@ -200,6 +215,8 @@ export async function runStream(
       finalText: lastAssistant ? finalText(lastAssistant.parts) : "",
       cost: assistantCost(lastAssistant) ?? meta.cost ?? null,
       exitCode,
+      model,
+      effort,
     }),
   );
   return exitCode;

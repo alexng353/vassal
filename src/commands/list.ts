@@ -1,5 +1,6 @@
 import { displayId } from "../lib/alias.ts";
 import { ensureDaemon } from "../lib/daemon.ts";
+import { formatModelLabel } from "../lib/model.ts";
 import { makeClient, type OpencodeClient } from "../lib/opencode.ts";
 import { readSessions } from "../lib/state.ts";
 import {
@@ -59,13 +60,23 @@ export async function runList(options: {
       "SESSION".length,
       ...visible.map(({ meta }) => displayId(meta).length),
     );
+    // Only what vassal recorded — asking the daemon which model each session
+    // ran would cost a message fetch per row, which is what `list` avoids.
+    const modelWidth = Math.max(
+      "MODEL".length,
+      ...visible.map(
+        ({ meta }) => formatModelLabel(meta.model, meta.effort).length,
+      ),
+    );
     console.log(
-      `${"SESSION".padEnd(sessionWidth)}  ${"AGE".padEnd(7)}  ${"COST".padEnd(7)} ${"STATUS".padEnd(8)}  TITLE`,
+      `${"SESSION".padEnd(sessionWidth)}  ${"AGE".padEnd(7)}  ${"COST".padEnd(7)} ${"MODEL".padEnd(modelWidth)}  ${"STATUS".padEnd(8)}  TITLE`,
     );
     for (const { meta, status, missing } of visible) {
       const age = humanAge(now - meta.lastActivityAt);
       const cost = `$${meta.cost.toFixed(2)}`;
-      console.log(formatRow(meta, age, cost, status, missing, sessionWidth));
+      console.log(
+        formatRow(meta, age, cost, status, missing, sessionWidth, modelWidth),
+      );
     }
   }
 
@@ -140,9 +151,11 @@ function formatRow(
   status: Status,
   missing: boolean,
   sessionWidth: number,
+  modelWidth: number,
 ): string {
   const displayStatus = missing ? `${status} [missing]` : status;
-  return `${displayId(meta).padEnd(sessionWidth)}  ${age.padEnd(7)}  ${cost.padEnd(7)} ${displayStatus.padEnd(8)}  ${meta.title}`;
+  const model = formatModelLabel(meta.model, meta.effort);
+  return `${displayId(meta).padEnd(sessionWidth)}  ${age.padEnd(7)}  ${cost.padEnd(7)} ${model.padEnd(modelWidth)}  ${displayStatus.padEnd(8)}  ${meta.title}`;
 }
 
 function humanAge(ms: number): string {

@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { generateAlias, resolveIdOrAlias } from "../lib/alias.ts";
 import { readVassalConfig } from "../lib/config.ts";
 import { ensureDaemon } from "../lib/daemon.ts";
+import { formatModelLabel, resolveModelSpec } from "../lib/model.ts";
 import {
   createSession,
   makeClient,
@@ -41,6 +42,7 @@ export async function dispatch(
     throw new Error("--worktree-root <path> conflicts with --no-worktree");
   }
 
+  const { model, effort } = resolveModelSpec(opts.model, opts.effort);
   const config = await readVassalConfig(baseCwd);
   const worktreeRoot = opts.worktreeRoot
     ? resolve(opts.worktreeRoot)
@@ -98,13 +100,15 @@ export async function dispatch(
       lastActivityAt: Date.now(),
       cost: 0,
       alias,
+      model,
+      effort,
     });
   }
 
   // Surface the handle before the (long) prompt call, so a stalled dispatch can
   // still be peeked at or aborted without waiting for stdout.
   progress.note(
-    `session ${alias ?? sessionId} — peek: vassal peek ${alias ?? sessionId}`,
+    `session ${alias ?? sessionId} on ${formatModelLabel(model, effort)} — peek: vassal peek ${alias ?? sessionId}`,
   );
   if (workCwd !== baseCwd) progress.note(`worktree ${workCwd}`);
 
@@ -115,7 +119,9 @@ export async function dispatch(
   // the prompt goes out, or `list`/`attach` report the session as done/failed/
   // aborted for the entire time it is actually working.
   if (meta) {
-    meta = clearRecordedOutcome(meta);
+    // A resume can switch model or effort, so re-record them for the run that
+    // is about to start rather than leaving the previous run's pair on disk.
+    meta = { ...clearRecordedOutcome(meta), model, effort };
     await writeSession(meta);
   }
   try {
@@ -123,8 +129,8 @@ export async function dispatch(
       sessionId,
       prompt: opts.prompt,
       cwd: workCwd,
-      model: opts.model,
-      effort: opts.effort,
+      model,
+      effort,
     });
     exitCode = 0;
   } finally {
@@ -151,6 +157,8 @@ export async function dispatch(
     finalText: outcome.finalText,
     cost: outcome.cost,
     exitCode: 0,
+    model,
+    effort,
   };
 }
 

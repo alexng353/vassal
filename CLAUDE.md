@@ -65,11 +65,14 @@ Session metadata (id, worktree path, cost, timestamps) lives at `$XDG_STATE_HOME
 ```
 SESSION <id>
 WORKTREE <path|->
+MODEL <name effort|->
 COST $<amount|->
 EXIT <code>
 ---
 <final assistant text>
 ```
+
+`MODEL` is the shorthand from `src/lib/model.ts` — `Sol XH` for `openai/gpt-5.6-sol` at `xhigh`, `-` when nothing recorded or observed says which model ran. Effort is only ever printed against the model vassal recorded it for; `attach`/`stream`/`peek` prefer the model the daemon reports on the newest assistant turn, so a session from before this was tracked still names its model but drops the effort it can't vouch for.
 
 `<id>` is a generated alias (`ses_word-word-word-word-word`, five EFF-short words) for any session created by this version of vassal; older sessions still show their opaque opencode IDs. All commands (`peek`, `abort`, `cleanup`, `status`, `--session`) accept either form — internally, vassal resolves alias → canonical opencode ID via `src/lib/alias.ts`.
 

@@ -18,6 +18,9 @@ export type DispatchResult = {
   finalText: string;
   cost: number | null;
   exitCode: number;
+  /** `provider/model` that ran, or null when it can't be determined. */
+  model: string | null;
+  effort: string | null;
 };
 
 export type DaemonState = {
@@ -38,6 +41,9 @@ export type SessionMeta = {
   exitCode?: number;
   abortedAt?: number;
   alias?: string;
+  /** `provider/model` of the most recent dispatch; absent on older records. */
+  model?: string;
+  effort?: string;
 };
 
 /** Where the dispatched agent actually runs — the worktree when there is one. */
