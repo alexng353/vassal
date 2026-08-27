@@ -141,6 +141,7 @@ describe("BoxModel", () => {
       box.draw(40);
       box.draw(120);
     });
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: matching a CSI cursor-up sequence
     expect(out).not.toMatch(/\x1b\[\d*A/);
     expect(out.split("\x1b[H").length - 1).toBe(3);
   });
