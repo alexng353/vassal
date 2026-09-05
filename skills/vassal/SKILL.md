@@ -1,13 +1,13 @@
 ---
 name: vassal
-description: Dispatch a coding task to GPT-5.6 Sol (via opencode) instead of doing it yourself. Use when the user says "vassal it", "delegate this", "have GPT do it", "send this to vassal", "dispatch this to GPT-5.6 Sol", or asks you to hand off mechanical implementation work to a faster/cheaper executor while you orchestrate. Also use proactively for tasks that are well-specified, mechanical, and don't benefit from your judgment — you remain the orchestrator and reviewer.
+description: Dispatch a coding task to GPT-6 Astra (via opencode) instead of doing it yourself. Use when the user says "vassal it", "delegate this", "have GPT do it", "send this to vassal", "dispatch this to GPT-6 Astra", or asks you to hand off mechanical implementation work to an executor while you orchestrate. Also use proactively for tasks that are well-specified, mechanical, and don't benefit from your judgment — you remain the orchestrator and reviewer.
 ---
 
-# vassal — dispatch to GPT-5.6 Sol
+# vassal — dispatch to GPT-6 Astra
 
-`vassal` is a CLI that hands off a fully-specified coding task to GPT-5.6 Sol (running inside an opencode daemon). Use it when:
+`vassal` is a CLI that hands off a fully-specified coding task to GPT-6 Astra (running inside an opencode daemon). Use it when:
 
-1. The task is mechanical (well-defined edits across known files) — GPT-5.6 Sol is faster and cheaper than running it through Claude.
+1. The task is mechanical (well-defined edits across known files).
 2. You've already done the planning and just need execution.
 3. You want to fan out parallel work — multiple `vassal` calls can run concurrently against the same daemon.
 
@@ -59,7 +59,7 @@ vassal --session <id> "now add tests for the new field"
 vassal --effort xhigh "implement the concurrency rewrite"
 ```
 
-`--effort` is separate from `--model`; do not append it to the model ID. Vassal validates the level against the selected model's live OpenCode provider data. The default is `openai/gpt-5.6-sol` at `xhigh`; that model also supports `none`, `low`, `medium`, and `high`.
+`--effort` is separate from `--model`; do not append it to the model ID. Vassal validates the level against the selected model's live OpenCode provider data. The default is `openai/gpt-6-astra` at `xhigh`.
 
 ### Prompt files
 
@@ -73,12 +73,12 @@ vassal --prompt-file /tmp/vassal-prompt.txt
 
 ## Writing a good vassal prompt
 
-GPT-5.6 Sol is fast and literal. Brief it like a smart contractor — not a colleague:
+Give the executor a concrete brief:
 
 - Name files and line numbers explicitly. Don't say "around the chat handler" — say `apps/api/src/routes/websockets/handlers/chat.ts:514`.
 - State the contract: what it should look like *after*, not just what to change.
 - Include any non-obvious constraints (style rules, conventions, etc.) — vassal's executor doesn't share your CLAUDE.md context unless you paste it.
-- For multi-step work: enumerate. GPT-5.6 Sol follows numbered lists religiously.
+- For multi-step work: enumerate the steps.
 
 If you find yourself writing a paragraph of "make sure to..." caveats, the task is probably not mechanical enough — keep it yourself.
 

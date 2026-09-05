@@ -88,7 +88,7 @@ describe("splitModel", () => {
 
 test("resolveModelSpec applies the dispatch defaults", () => {
   expect(resolveModelSpec()).toEqual({
-    model: "openai/gpt-5.6-sol",
+    model: "openai/gpt-6-astra",
     effort: "xhigh",
   });
   expect(resolveModelSpec("openai/gpt-5.6", "low")).toEqual({

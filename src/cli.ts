@@ -17,9 +17,10 @@ import { runStatus } from "./commands/status.ts";
 import { runStream } from "./commands/stream.ts";
 import { parseDuration } from "./lib/duration.ts";
 import { exitAfterFlush } from "./lib/exit.ts";
+import { DEFAULT_EFFORT, DEFAULT_MODEL } from "./lib/model.ts";
 
 const HELP = dedent`
-  vassal — dispatch coding tasks to GPT-5.6 Sol via opencode.
+  vassal — dispatch coding tasks to GPT-6 Astra via opencode.
 
   USAGE
     vassal <prompt>                       dispatch a new task (worktree by default)
@@ -40,8 +41,8 @@ const HELP = dedent`
 
   FLAGS
     --session <id>          resume a session by id
-    --model <p/m>           provider/model (default: openai/gpt-5.6-sol)
-    --effort <level>        reasoning effort (default: xhigh); validated per model
+    --model <p/m>           provider/model (default: ${DEFAULT_MODEL})
+    --effort <level>        reasoning effort (default: ${DEFAULT_EFFORT}); validated per model
     --prompt-file <path>    read prompt from a UTF-8 file; conflicts with prompt args
     --worktree <path>       use this path; runs [vassal] worktree_setup if missing
     --worktree-root <path>  root for fresh worktrees; conflicts with --worktree

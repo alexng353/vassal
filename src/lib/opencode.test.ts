@@ -15,7 +15,7 @@ const PROVIDERS = {
             xhigh: { reasoningEffort: "xhigh" },
           },
         },
-        "gpt-5.6-sol": {
+        "gpt-6-astra": {
           variants: {
             none: { reasoningEffort: "none" },
             low: { reasoningEffort: "low" },
@@ -92,7 +92,7 @@ describe("sendPrompt effort", () => {
     expect(prompts).toHaveLength(0);
   });
 
-  test("defaults to GPT-5.6 Sol with xhigh effort", async () => {
+  test("defaults to GPT-6 Astra with xhigh effort", async () => {
     const { client, prompts, providerRequests } = clientWithProviders();
 
     await sendPrompt(client, {
@@ -104,7 +104,7 @@ describe("sendPrompt effort", () => {
     expect(providerRequests()).toBe(1);
     expect(prompts[0]).toMatchObject({
       body: {
-        model: { providerID: "openai", modelID: "gpt-5.6-sol" },
+        model: { providerID: "openai", modelID: "gpt-6-astra" },
         variant: "xhigh",
       },
     });

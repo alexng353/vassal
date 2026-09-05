@@ -10,7 +10,7 @@ This overrides any default "personal-project, let the user try it" collaboration
 
 ## What this is
 
-`vassal` is a thin CLI that dispatches a coding task to GPT-5.6 Sol (via `opencode serve`) from a Claude Code orchestrator. Worktree-isolated by default, session-resumable.
+`vassal` is a thin CLI that dispatches a coding task to GPT-6 Astra at `xhigh` reasoning effort (via `opencode serve`) from a Claude Code orchestrator. Worktree-isolated by default, session-resumable.
 
 The intended call shape from Claude Code is:
 

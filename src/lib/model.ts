@@ -1,6 +1,6 @@
 import type { SessionMeta } from "./types.ts";
 
-export const DEFAULT_MODEL = "openai/gpt-5.6-sol";
+export const DEFAULT_MODEL = "openai/gpt-6-astra";
 export const DEFAULT_EFFORT = "xhigh";
 
 const EFFORT_SHORTHAND: Record<string, string> = {

@@ -1,8 +1,8 @@
 # vassal
 
-Dispatch coding tasks from a Claude Code orchestrator to a GPT-5.6 Sol executor (via [opencode](https://opencode.ai)). Worktree-isolated, session-resumable.
+Dispatch coding tasks from a Claude Code orchestrator to a GPT-6 Astra executor (via [opencode](https://opencode.ai)). Worktree-isolated, session-resumable.
 
-The premise: Opus 4.7 is a great orchestrator, GPT-5.6 Sol is a great executor. `vassal` is the bridge — it makes "delegate this to a different model" a one-liner from Claude Code's `Bash` tool.
+The premise: Claude orchestrates, GPT-6 Astra executes. `vassal` is the bridge — it makes "delegate this to a different model" a one-liner from Claude Code's `Bash` tool.
 
 ## Install
 
@@ -36,14 +36,14 @@ vassal status ses_abc123
 vassal cleanup ses_abc123
 ```
 
-`--effort <level>` is validated against the selected model's variants reported by the local OpenCode daemon. The default is `openai/gpt-5.6-sol` at `xhigh`; that model also supports `none`, `low`, `medium`, and `high`.
+`--effort <level>` is validated against the selected model's variants reported by the local OpenCode daemon. The default is `openai/gpt-6-astra` at `xhigh`.
 
 ## Output contract
 
 ```
 SESSION ses_abc123
 WORKTREE /tmp/vassal-wt-abc123
-MODEL Sol XH
+MODEL Astra XH
 COST $0.0421
 EXIT 0
 ---
@@ -100,7 +100,7 @@ ln -s "$(pwd)/skills/vassal" ~/.claude/skills/vassal
 cp -r skills/vassal ~/.claude/skills/vassal
 ```
 
-Then in any Claude Code session, ask Claude to "vassal it" / "delegate this to GPT-5.6 Sol" / etc. and the skill activates.
+Then in any Claude Code session, ask Claude to "vassal it" / "delegate this to GPT-6 Astra" / etc. and the skill activates.
 
 ## Why not just use opencode directly?
 
